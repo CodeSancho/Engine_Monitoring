@@ -1,0 +1,17 @@
+{
+  "contamination": 0.05,
+  "test_precision": 0.95,
+  "test_recall": 0.7308,
+  "test_f1": 0.8261,
+  "confusion_matrix": [
+    [
+      50,
+      2
+    ],
+    [
+      14,
+      38
+    ]
+  ],
+  "eval_methodology": "synthetic physically-motivated anomaly injection, val/test split, not Fault_Condition"
+}

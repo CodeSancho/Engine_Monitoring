@@ -1,0 +1,7 @@
+{
+  "test_mae_cycles": 10.19,
+  "test_rmse_cycles": 13.64,
+  "naive_mae_cycles": 37.5,
+  "features": 87,
+  "rul_capped_at": 125
+}

@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+
+  # ── Python ML Microservice ──────────────────────────────────────────────────
+  flask_ml:
+    build:
+      context: .
+      dockerfile: Dockerfile.flask
+    container_name: mopani_flask_ml
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./saved_models:/app/saved_models:ro
+      - ./data:/app/data:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Node.js Backend ─────────────────────────────────────────────────────────
+  node_backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    container_name: mopani_backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data:ro
+    environment:
+      - PORT=3000
+      - FLASK_URL=http://flask_ml:5001
+      - DATA_PATH=/app/data/raw/engine_failure_dataset.csv
+    depends_on:
+      flask_ml:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── React Dashboard (served via nginx) ──────────────────────────────────────
+  dashboard:
+    image: nginx:alpine
+    container_name: mopani_dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./dashboard/dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - node_backend
+    restart: unless-stopped
+
+networks:
+  default:
+    name: mopani_network

@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir \
+    flask flask-cors numpy pandas scikit-learn joblib scipy
+
+COPY python_service/ ./python_service/
+COPY saved_models/   ./saved_models/
+COPY data/           ./data/
+
+ENV PYTHONPATH=/app
+
+CMD ["python3", "python_service/predictor.py"]
