@@ -18,7 +18,7 @@ export default function Header({ connected, activeAlerts, view, setView, goFleet
           <span className="header__logo-icon">⚙</span>
           <div>
             <div className="header__title">Engine Monitor</div>
-            <div className="header__sub">Real-Time Haul Truck Engine Monitoring System</div>
+            <div className="header__sub">Real-Time Engine Monitoring System</div>
           </div>
         </div>
       </div>

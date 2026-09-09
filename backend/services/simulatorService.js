@@ -1,8 +1,18 @@
 /**
  * simulatorService.js
- * Replays the ziya07 CSV as a live multi-truck sensor stream.
- * Maintains a rolling 30-reading buffer per truck.
+ * Replays the ziya07 CSV as a live multi-engine sensor stream.
+ * Maintains a rolling 30-reading buffer per engine.
  * When buffer is full, calls Flask /predict and broadcasts result.
+ *
+ * FIXES APPLIED (see conversation):
+ *  1. rul_hours removed from fleetStatus and createAlert -- /predict no
+ *     longer returns it. Previously this silently became `undefined` on
+ *     every update (no error, just quietly wrong/missing data forever).
+ *  2. severity is now the new two-tier scheme ('NORMAL' / 'ANOMALY'),
+ *     matching what /predict actually returns.
+ *  3. Truck naming (Komatsu/Cat models) replaced with plain "Engine 1/2/3"
+ *     -- the project scope is engine-level anomaly detection, not
+ *     truck-specific, so the naming now matches what's actually validated.
  */
 
 const fs          = require('fs');
@@ -10,37 +20,35 @@ const csv         = require('csv-parser');
 const axios       = require('axios');
 const { createAlert } = require('./alertService');
 
-// ── Truck config — 3 virtual trucks pulling from the same dataset ─────────────
-const TRUCKS = [
-  { id: 'TRUCK-047', name: 'Komatsu 930E #47', model: 'Komatsu 930E'  },
-  { id: 'TRUCK-022', name: 'Komatsu 930E #22', model: 'Komatsu 930E'  },
-  { id: 'TRUCK-003', name: 'Cat 793F #03',      model: 'Caterpillar 793F' },
+// ── Engine config — 3 virtual engines pulling from the same dataset ───────────
+const ENGINES = [
+  { id: 'ENGINE-1', name: 'Engine 1' },
+  { id: 'ENGINE-2', name: 'Engine 2' },
+  { id: 'ENGINE-3', name: 'Engine 3' },
 ];
 
 const WINDOW_SIZE    = 30;   // readings per prediction window
 const EMIT_INTERVAL  = 1500; // ms between readings (1.5s = fast demo)
 
-// Per-truck state
-const truckState = {};
-TRUCKS.forEach(t => {
-  truckState[t.id] = {
+// Per-engine state
+const engineState = {};
+ENGINES.forEach(e => {
+  engineState[e.id] = {
     buffer:        [],
     latestResult:  null,
     readingCount:  0,
-    info:          t,
+    info:          e,
   };
 });
 
 // Shared in-memory fleet status for REST endpoint
 const fleetStatus = {};
-TRUCKS.forEach(t => {
-  fleetStatus[t.id] = {
-    equipment_id:  t.id,
-    name:          t.name,
-    model:         t.model,
+ENGINES.forEach(e => {
+  fleetStatus[e.id] = {
+    equipment_id:  e.id,
+    name:          e.name,
     severity:      'NORMAL',
     anomaly_score: 0,
-    rul_hours:     200,
     message:       'Awaiting first prediction...',
     last_reading:  null,
     reading_count: 0,
@@ -48,10 +56,10 @@ TRUCKS.forEach(t => {
 });
 
 // ── Map ziya07 columns to display-friendly sensor names ──────────────────────
-function mapReading(row, truckId, offset = 0) {
-  // Add slight per-truck variation to simulate different engines
-  const factor = truckId === 'TRUCK-047' ? 1.0
-               : truckId === 'TRUCK-022' ? 1.02
+function mapReading(row, engineId, offset = 0) {
+  // Add slight per-engine variation to simulate different units
+  const factor = engineId === 'ENGINE-1' ? 1.0
+               : engineId === 'ENGINE-2' ? 1.02
                : 0.98;
 
   return {
@@ -61,6 +69,7 @@ function mapReading(row, truckId, offset = 0) {
     Vibration_X:      (parseFloat(row['Vibration_X']) * factor).toFixed(4),
     Vibration_Y:      (parseFloat(row['Vibration_Y'])).toFixed(4),
     Vibration_Z:      (parseFloat(row['Vibration_Z'])).toFixed(4),
+    Torque_Nm:        (parseFloat(row['Torque']) * factor).toFixed(2),
     Power_Output_kW:  (parseFloat(row['Power_Output (kW)']) * factor).toFixed(2),
     Fault_Condition:  parseInt(row['Fault_Condition']),
     Operational_Mode: row['Operational_Mode'],
@@ -69,15 +78,15 @@ function mapReading(row, truckId, offset = 0) {
 }
 
 // ── Call Flask predictor ──────────────────────────────────────────────────────
-async function callPredictor(truckId, buffer, flaskUrl) {
+async function callPredictor(engineId, buffer, flaskUrl) {
   try {
     const response = await axios.post(`${flaskUrl}/predict`, {
-      equipment_id: truckId,
+      equipment_id: engineId,
       readings:     buffer,
     }, { timeout: 5000 });
     return response.data;
   } catch (err) {
-    console.warn(`[Simulator] Flask call failed for ${truckId}: ${err.message}`);
+    console.warn(`[Simulator] Flask call failed for ${engineId}: ${err.message}`);
     return null;
   }
 }
@@ -86,7 +95,6 @@ async function callPredictor(truckId, buffer, flaskUrl) {
 function startSimulator({ io, flaskUrl, dataPath }) {
   console.log(`[Simulator] Starting — data: ${dataPath}`);
 
-  // Load all CSV rows into memory then replay
   const allRows = [];
   if (!fs.existsSync(dataPath)) {
     console.error(`[Simulator] Data file not found: ${dataPath}`);
@@ -108,37 +116,32 @@ function replayRows(rows, io, flaskUrl) {
   const tick = async () => {
     if (rows.length === 0) return;
 
-    // Each tick: advance each truck by one reading
-    for (const truck of TRUCKS) {
-      const rowIdx   = (globalIdx + TRUCKS.indexOf(truck) * 7) % rows.length;
+    for (const engine of ENGINES) {
+      const rowIdx   = (globalIdx + ENGINES.indexOf(engine) * 7) % rows.length;
       const rawRow   = rows[rowIdx];
-      const reading  = mapReading(rawRow, truck.id);
-      const state    = truckState[truck.id];
+      const reading  = mapReading(rawRow, engine.id);
+      const state    = engineState[engine.id];
 
       state.buffer.push(reading);
       state.readingCount++;
 
-      // Emit live reading to dashboard
       io.emit('sensor_reading', {
-        equipment_id: truck.id,
-        name:         truck.name,
+        equipment_id: engine.id,
+        name:         engine.name,
         reading,
         buffer_size:  state.buffer.length,
       });
 
-      // When buffer full — run prediction
       if (state.buffer.length >= WINDOW_SIZE) {
-        const result = await callPredictor(truck.id, state.buffer, flaskUrl);
+        const result = await callPredictor(engine.id, state.buffer, flaskUrl);
 
         if (result) {
           state.latestResult = result;
 
-          // Update fleet status
-          fleetStatus[truck.id] = {
-            ...fleetStatus[truck.id],
+          fleetStatus[engine.id] = {
+            ...fleetStatus[engine.id],
             severity:      result.severity,
             anomaly_score: result.anomaly_score,
-            rul_hours:     result.rul_hours,
             message:       result.message,
             last_reading:  reading,
             reading_count: state.readingCount,
@@ -146,13 +149,12 @@ function replayRows(rows, io, flaskUrl) {
             feature_snapshot: result.feature_snapshot,
           };
 
-          // Create alert for non-normal severities
+          // FIX: severity is now 'NORMAL' or 'ANOMALY' only.
           if (result.severity !== 'NORMAL') {
             const alert = createAlert({
-              equipment_id:     truck.id,
+              equipment_id:     engine.id,
               severity:         result.severity,
               anomaly_score:    result.anomaly_score,
-              rul_hours:        result.rul_hours,
               message:          result.message,
               feature_snapshot: result.feature_snapshot,
             });
@@ -160,20 +162,17 @@ function replayRows(rows, io, flaskUrl) {
             io.emit('new_alert', alert);
           }
 
-          // Broadcast prediction result
           io.emit('prediction', {
-            equipment_id:     truck.id,
-            name:             truck.name,
+            equipment_id:     engine.id,
+            name:             engine.name,
             ...result,
             reading_count:    state.readingCount,
           });
 
-          console.log(`[${truck.id}] ${result.severity} | `
-                    + `score=${result.anomaly_score.toFixed(3)} | `
-                    + `RUL=${result.rul_hours}h`);
+          console.log(`[${engine.id}] ${result.severity} | `
+                    + `score=${result.anomaly_score.toFixed(3)}`);
         }
 
-        // Slide window — remove oldest reading
         state.buffer.shift();
       }
     }

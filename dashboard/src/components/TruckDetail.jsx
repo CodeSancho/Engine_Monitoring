@@ -1,7 +1,24 @@
 // src/components/TruckDetail.jsx
+//
+// FIXES APPLIED (see conversation):
+//  1. SEV_COLOR previously had no entry for 'ANOMALY' (only the old
+//     four-tier NORMAL/WARNING/CAUTION/CRITICAL scheme), so an anomalous
+//     engine fell through to the '|| #22c55e' default -- GREEN, the same
+//     color as normal. Confirmed live: this made real anomalies visually
+//     indistinguishable from healthy engines. Now maps the real two-tier
+//     scheme explicitly.
+//  2. RULGauge and all RUL display removed from this view. RUL is no
+//     longer part of live per-engine monitoring (the ziya07-to-CMAPSS
+//     sensor mapping was proven physically invalid); it now lives as a
+//     separate demo panel in ModelInfo.jsx, validated on CMAPSS-native
+//     data only.
+//  3. truck.model reference removed -- simulatorService.js no longer
+//     assigns engine "models" (Komatsu/Cat naming was dropped in favor
+//     of generic Engine 1/2/3).
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
-const SEV_COLOR = { NORMAL:'#22c55e', WARNING:'#f59e0b', CAUTION:'#f97316', CRITICAL:'#ef4444' };
+const SEV_COLOR = { NORMAL: '#22c55e', ANOMALY: '#ef4444' };
+
 const SENSOR_KEYS = [
   { key: 'Temperature_C',   label: 'Temperature',    unit: '°C',   color: '#f87171', warn: 100 },
   { key: 'RPM',             label: 'Engine RPM',     unit: 'rpm',  color: '#60a5fa', warn: 3800 },
@@ -40,40 +57,10 @@ function SensorChart({ data, sensor }) {
   );
 }
 
-function RULGauge({ rul, severity }) {
-  const color = SEV_COLOR[severity] || '#22c55e';
-  const MAX   = 200;
-  const pct   = Math.min(100, (rul / MAX) * 100);
-  const angle = (pct / 100) * 180;
-  const rad   = (angle - 90) * (Math.PI / 180);
-  const cx = 60, cy = 60, r = 50;
-  const nx  = cx + r * Math.cos(rad);
-  const ny  = cy + r * Math.sin(rad);
-
-  return (
-    <div className="rul-gauge">
-      <svg viewBox="0 0 120 70" width="140" height="82">
-        {/* Background arc */}
-        <path d={`M10,60 A50,50 0 0,1 110,60`} fill="none" stroke="#1e293b" strokeWidth="10" />
-        {/* Value arc */}
-        <path d={`M10,60 A50,50 0 0,1 110,60`} fill="none" stroke={color} strokeWidth="10"
-          strokeDasharray={`${pct * 1.571} 157.1`} strokeLinecap="round" />
-        {/* Needle */}
-        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={color} strokeWidth="2" strokeLinecap="round" />
-        <circle cx={cx} cy={cy} r="4" fill={color} />
-      </svg>
-      <div className="rul-gauge__val" style={{ color }}>
-        {typeof rul === 'number' ? `${rul.toFixed(0)}h` : '—'}
-      </div>
-      <div className="rul-gauge__label">Remaining Useful Life</div>
-    </div>
-  );
-}
-
 export default function TruckDetail({ truckId, fleet, prediction, sensorHistory, onBack }) {
   const truck = fleet.find(t => t.equipment_id === truckId) || {};
   const sev   = truck.severity || 'NORMAL';
-  const color = SEV_COLOR[sev];
+  const color = SEV_COLOR[sev] || '#94a3b8'; // unrecognized severity -> neutral gray, never green
 
   return (
     <div className="truck-detail">
@@ -96,15 +83,11 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
           </div>
         </div>
 
-        <RULGauge rul={truck.rul_hours || 0} severity={sev} />
-
         <div className="detail-stat">
           <div className="detail-stat__label">Readings Processed</div>
           <div className="detail-stat__val" style={{ color: '#94a3b8' }}>
             {truck.reading_count || 0}
           </div>
-          <div className="detail-stat__label" style={{ marginTop: 8 }}>Model</div>
-          <div className="detail-stat__sub">{truck.model}</div>
         </div>
       </div>
 

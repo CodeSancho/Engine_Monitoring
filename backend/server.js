@@ -16,6 +16,7 @@ const cors       = require('cors');
 const { Server } = require('socket.io');
 const path       = require('path');
 
+
 const { startSimulator }     = require('./services/simulatorService');
 const { initAlertStore }     = require('./services/alertService');
 const fleetRoutes            = require('./routes/fleet');
@@ -43,6 +44,8 @@ app.set('flaskUrl', FLASK_URL);
 // ── REST Routes ──────────────────────────────────────────────────────────────
 app.use('/api/fleet',  fleetRoutes);
 app.use('/api/alerts', alertRoutes);
+const rulDemoRoutes = require('./routes/rulDemo');
+app.use('/api/rul-demo', rulDemoRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({
