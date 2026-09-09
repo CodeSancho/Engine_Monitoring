@@ -1,7 +1,7 @@
 {
-  "name": "mopani-engine-monitoring-backend",
+  "name": "engine-monitoring-backend",
   "version": "1.0.0",
-  "description": "Haul truck engine monitoring backend",
+  "description": "engine monitoring backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
