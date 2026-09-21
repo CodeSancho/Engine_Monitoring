@@ -22,3 +22,8 @@ export const fetchModelInfo    = () => api.get('/api/model-info').then(r => r.da
 // Not connected to live engine monitoring -- validated on CMAPSS-native
 // data only (see ModelInfo.jsx and project notes).
 export const fetchRulDemo = (start = 0) => api.get(`/api/rul-demo?start=${start}`).then(r => r.data);
+
+// NEW: manual anomaly injection for testing/demo -- corrupts a running
+// engine's live buffer so the next natural prediction genuinely flags it.
+export const injectAnomaly = ({ equipment_id, fault_type, severity }) =>
+  api.post('/api/inject', { equipment_id, fault_type, severity }).then(r => r.data);

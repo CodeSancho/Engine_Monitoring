@@ -188,4 +188,69 @@ function replayRows(rows, io, flaskUrl) {
 function getFleetStatus() { return fleetStatus; }
 function getTruckStatus(id) { return fleetStatus[id] || null; }
 
-module.exports = { startSimulator, getFleetStatus, getTruckStatus };
+// ── Live anomaly injection (for manual demo/testing) ─────────────────────────
+// Mutates a running engine's live buffer in place, using the same
+// physically-grounded fault signatures as synthetic_anomalies.py -- but
+// applied here to the LIVE stream instead of offline evaluation data.
+// The next natural tick's /predict call will see the corrupted buffer
+// and (if the perturbation is large enough) flag it through the normal,
+// unmodified alert pipeline -- nothing about createAlert() or the
+// Socket.io emit path changes.
+//
+// Std values below are the REAL values measured from ziya07 windowed
+// features earlier in this project (see conversation) -- not guessed.
+const SENSOR_STDS = {
+  Temperature_C:   6.80,
+  RPM:            332.82,
+  Vibration_X:      0.12,
+  Vibration_Y:      0.12,
+  Vibration_Z:      0.12,
+  Torque_Nm:       17.86,
+  Fuel_Efficiency:  1.94,
+};
+
+const FAULT_TYPES = ['bearing_wear', 'overheat', 'mechanical_bind'];
+
+const FIELDS_CHANGED = {
+  bearing_wear:    ['Vibration_X', 'Vibration_Y', 'Vibration_Z'],
+  overheat:        ['Temperature_C', 'Fuel_Efficiency'],
+  mechanical_bind: ['Torque_Nm', 'RPM'],
+};
+
+function injectAnomaly({ equipment_id, fault_type, severity }) {
+  const state = engineState[equipment_id];
+  if (!state) throw new Error(`Unknown engine: ${equipment_id}`);
+  if (!FAULT_TYPES.includes(fault_type)) throw new Error(`Unknown fault_type: ${fault_type} (expected one of ${FAULT_TYPES.join(', ')})`);
+  if (state.buffer.length === 0) throw new Error(`${equipment_id}'s buffer is empty -- wait for the simulator to warm up`);
+
+  const sev = Number(severity);
+  if (isNaN(sev) || sev <= 0) throw new Error('severity must be a positive number (e.g. 1-6 standard deviations)');
+
+  state.buffer = state.buffer.map(reading => {
+    const r = { ...reading };
+    if (fault_type === 'bearing_wear') {
+      ['Vibration_X', 'Vibration_Y', 'Vibration_Z'].forEach(k => {
+        r[k] = (parseFloat(r[k]) + sev * SENSOR_STDS[k]).toFixed(4);
+      });
+    } else if (fault_type === 'overheat') {
+      r.Temperature_C   = (parseFloat(r.Temperature_C)   + sev * SENSOR_STDS.Temperature_C).toFixed(2);
+      r.Fuel_Efficiency = (parseFloat(r.Fuel_Efficiency) - sev * SENSOR_STDS.Fuel_Efficiency).toFixed(2);
+    } else if (fault_type === 'mechanical_bind') {
+      r.Torque_Nm = (parseFloat(r.Torque_Nm) + sev * SENSOR_STDS.Torque_Nm).toFixed(2);
+      r.RPM       = (parseFloat(r.RPM)       - sev * SENSOR_STDS.RPM).toFixed(0);
+    }
+    return r;
+  });
+
+  console.log(`[Inject] ${equipment_id} <- ${fault_type} @ severity=${sev} (next tick will reflect this)`);
+  return {
+    equipment_id,
+    fault_type,
+    severity: sev,
+    buffer_size: state.buffer.length,
+    readings_affected: state.buffer.length,   // every buffered reading was perturbed, matching count
+    fields_changed: FIELDS_CHANGED[fault_type],
+  };
+}
+
+module.exports = { startSimulator, getFleetStatus, getTruckStatus, injectAnomaly };

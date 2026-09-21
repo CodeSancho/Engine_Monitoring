@@ -6,6 +6,7 @@ import TruckDetail     from './components/TruckDetail';
 import AlertPanel      from './components/AlertPanel';
 import Header          from './components/Header';
 import ModelInfo       from './components/ModelInfo';
+import AnomalyInjector from './components/Anomalyinjector';
 import './index.css';
 
 export default function App() {
@@ -73,6 +74,7 @@ export default function App() {
         {view === 'alerts' && <AlertPanel alerts={alerts}
             onAcknowledge={id => setAlerts(prev => prev.filter(a => a.id !== id))} onSelectTruck={openTruck} />}
         {view === 'model'  && <ModelInfo />}
+        {view === 'inject' && <AnomalyInjector />}
       </main>
     </div>
   );

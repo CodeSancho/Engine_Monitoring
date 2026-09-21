@@ -1,8 +1,11 @@
 // src/components/FleetOverview.jsx
+
+
+
 const SEV_COLOR = { NORMAL:'#22c55e', WARNING:'#f59e0b', CAUTION:'#f97316', CRITICAL:'#ef4444' };
 const SEV_BG    = { NORMAL:'#052e16', WARNING:'#451a03', CAUTION:'#431407', CRITICAL:'#450a0a' };
 
-function TruckCard({ truck, prediction, onClick }) {
+function TruckCard({ truck, onClick }) {
   const sev   = truck.severity || 'NORMAL';
   const color = SEV_COLOR[sev];
   const bg    = SEV_BG[sev];

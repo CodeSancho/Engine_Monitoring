@@ -22,7 +22,7 @@ const { initAlertStore }     = require('./services/alertService');
 const fleetRoutes            = require('./routes/fleet');
 const alertRoutes            = require('./routes/alerts');
 const { setupWebSocket }     = require('./websocket/liveStream');
-
+  const injectRoutes = require('./routes/inject');
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
@@ -44,6 +44,7 @@ app.set('flaskUrl', FLASK_URL);
 // ── REST Routes ──────────────────────────────────────────────────────────────
 app.use('/api/fleet',  fleetRoutes);
 app.use('/api/alerts', alertRoutes);
+app.use('/api/inject', injectRoutes);
 const rulDemoRoutes = require('./routes/rulDemo');
 app.use('/api/rul-demo', rulDemoRoutes);
 
