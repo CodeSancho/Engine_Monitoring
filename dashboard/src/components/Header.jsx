@@ -43,16 +43,16 @@ function Header({
         <div className="header__logo">
 
           <span className="header__logo-icon">
-            ⚙
+            
           </span>
 
           <div>
             <div className="header__title">
-              Engine Monitor
+             Predictive Maintenance
             </div>
 
             <div className="header__sub">
-              Real-Time Engine Monitoring System
+             Engine Monitoring System
             </div>
           </div>
 
