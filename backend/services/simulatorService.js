@@ -13,6 +13,13 @@
  *  3. Truck naming (Komatsu/Cat models) replaced with plain "Engine 1/2/3"
  *     -- the project scope is engine-level anomaly detection, not
  *     truck-specific, so the naming now matches what's actually validated.
+ *  4. Removed the per-engine "factor" fudge (1.0 / 1.02 / 0.98) that used
+ *     to fake variation between engines by multiplying the SAME rows.
+ *     ziya07 has no real per-unit column, so instead of inventing a
+ *     multiplier, each virtual engine is now assigned its own genuinely
+ *     distinct, non-overlapping segment of the real CSV and loops within
+ *     that segment independently -- real data assignment, not fabricated
+ *     variation. See assignSegments() / replayRows() below.
  */
 
 const fs          = require('fs');
@@ -56,25 +63,37 @@ ENGINES.forEach(e => {
 });
 
 // ── Map ziya07 columns to display-friendly sensor names ──────────────────────
-function mapReading(row, engineId, offset = 0) {
-  // Add slight per-engine variation to simulate different units
-  const factor = engineId === 'ENGINE-1' ? 1.0
-               : engineId === 'ENGINE-2' ? 1.02
-               : 0.98;
-
+// No per-engine factor here anymore -- each engine's realism now comes from
+// which real rows it's assigned (see assignSegments), not an invented scale.
+function mapReading(row) {
   return {
-    Temperature_C:    (parseFloat(row['Temperature (°C)']) * factor).toFixed(2),
-    RPM:              (parseFloat(row['RPM']) * factor).toFixed(0),
-    Fuel_Efficiency:  (parseFloat(row['Fuel_Efficiency'])).toFixed(2),
-    Vibration_X:      (parseFloat(row['Vibration_X']) * factor).toFixed(4),
-    Vibration_Y:      (parseFloat(row['Vibration_Y'])).toFixed(4),
-    Vibration_Z:      (parseFloat(row['Vibration_Z'])).toFixed(4),
-    Torque_Nm:        (parseFloat(row['Torque']) * factor).toFixed(2),
-    Power_Output_kW:  (parseFloat(row['Power_Output (kW)']) * factor).toFixed(2),
+    Temperature_C:    parseFloat(row['Temperature (°C)']).toFixed(2),
+    RPM:              parseFloat(row['RPM']).toFixed(0),
+    Fuel_Efficiency:  parseFloat(row['Fuel_Efficiency']).toFixed(2),
+    Vibration_X:      parseFloat(row['Vibration_X']).toFixed(4),
+    Vibration_Y:      parseFloat(row['Vibration_Y']).toFixed(4),
+    Vibration_Z:      parseFloat(row['Vibration_Z']).toFixed(4),
+    Torque_Nm:        parseFloat(row['Torque']).toFixed(2),
+    Power_Output_kW:  parseFloat(row['Power_Output (kW)']).toFixed(2),
     Fault_Condition:  parseInt(row['Fault_Condition']),
     Operational_Mode: row['Operational_Mode'],
     timestamp:        new Date().toISOString(),
   };
+}
+
+// ── Assign each virtual engine its own real, non-overlapping slice of the
+// CSV. ziya07 has no unit/equipment column of its own (unlike CMAPSS, which
+// genuinely has 100 distinct engine units) -- so "multiple engines" here
+// means each engine gets a distinct contiguous chunk of the SAME real
+// dataset and loops within just that chunk, rather than all three reading
+// the same rows dressed up with a fake multiplier.
+function assignSegments(rowCount) {
+  const segLen = Math.floor(rowCount / ENGINES.length);
+  return ENGINES.map((engine, i) => {
+    const start = i * segLen;
+    const end   = (i === ENGINES.length - 1) ? rowCount : start + segLen; // last engine absorbs the remainder
+    return { id: engine.id, start, end };
+  });
 }
 
 // ── Call Flask predictor ──────────────────────────────────────────────────────
@@ -111,16 +130,29 @@ function startSimulator({ io, flaskUrl, dataPath }) {
 }
 
 function replayRows(rows, io, flaskUrl) {
-  let globalIdx = 0;
+  if (rows.length < ENGINES.length) {
+    console.error(`[Simulator] Only ${rows.length} rows loaded -- not enough to give each of ${ENGINES.length} engines its own segment.`);
+    return;
+  }
+
+  const segments = assignSegments(rows.length);
+  segments.forEach(seg => {
+    const state = engineState[seg.id];
+    state.segment = seg;
+    state.cursor  = seg.start;
+    console.log(`[Simulator] ${seg.id} <- rows [${seg.start}, ${seg.end}) of ${rows.length}`);
+  });
 
   const tick = async () => {
-    if (rows.length === 0) return;
-
     for (const engine of ENGINES) {
-      const rowIdx   = (globalIdx + ENGINES.indexOf(engine) * 7) % rows.length;
-      const rawRow   = rows[rowIdx];
-      const reading  = mapReading(rawRow, engine.id);
       const state    = engineState[engine.id];
+      const rawRow   = rows[state.cursor];
+      const reading  = mapReading(rawRow);
+
+      // Advance this engine's cursor within its OWN real segment only --
+      // loops back to its own start, never bleeds into another engine's rows.
+      state.cursor++;
+      if (state.cursor >= state.segment.end) state.cursor = state.segment.start;
 
       state.buffer.push(reading);
       state.readingCount++;
@@ -177,7 +209,6 @@ function replayRows(rows, io, flaskUrl) {
       }
     }
 
-    globalIdx = (globalIdx + 1) % rows.length;
     setTimeout(tick, EMIT_INTERVAL);
   };
 
@@ -189,68 +220,80 @@ function getFleetStatus() { return fleetStatus; }
 function getTruckStatus(id) { return fleetStatus[id] || null; }
 
 // ── Live anomaly injection (for manual demo/testing) ─────────────────────────
-// Mutates a running engine's live buffer in place, using the same
-// physically-grounded fault signatures as synthetic_anomalies.py -- but
-// applied here to the LIVE stream instead of offline evaluation data.
-// The next natural tick's /predict call will see the corrupted buffer
-// and (if the perturbation is large enough) flag it through the normal,
-// unmodified alert pipeline -- nothing about createAlert() or the
-// Socket.io emit path changes.
+// Mutates a running engine's live buffer in place with ACTUAL target sensor
+// values (e.g. "set Temperature to 140") instead of an abstract severity
+// multiplier -- the caller sees and chooses the exact number that goes into
+// the buffer, not a sigma scale. The next natural tick's /predict call will
+// see the corrupted buffer and (if the values are anomalous enough) flag it
+// through the normal, unmodified alert pipeline -- nothing about
+// createAlert() or the Socket.io emit path changes.
 //
-// Std values below are the REAL values measured from ziya07 windowed
-// features earlier in this project (see conversation) -- not guessed.
-const SENSOR_STDS = {
-  Temperature_C:   6.80,
-  RPM:            332.82,
-  Vibration_X:      0.12,
-  Vibration_Y:      0.12,
-  Vibration_Z:      0.12,
-  Torque_Nm:       17.86,
-  Fuel_Efficiency:  1.94,
+// SENSOR_STATS below are the REAL mean/std/min/max measured directly from
+// the raw ziya07 CSV (data/raw/engine_failure_dataset.csv, 1000 rows) --
+// not guessed. They exist so the frontend can show honest "typical range"
+// guidance next to each input and offer preset buttons that pre-fill
+// real, computed anomalous values (mean ± Nσ) which the user can then
+// see and edit before injecting -- the number injected is always visible,
+// never hidden behind a slider.
+const SENSOR_STATS = {
+  Temperature_C:   { label: 'Temperature',     unit: '°C',  mean: 90.50, std: 17.26, min: 60.01,  max: 119.98 },
+  RPM:             { label: 'RPM',              unit: 'rpm', mean: 2512.32, std: 867.54, min: 1000.74, max: 3996.04 },
+  Vibration_X:     { label: 'Vibration X',      unit: '',    mean: 0.50, std: 0.30, min: 0.00, max: 1.00 },
+  Vibration_Y:     { label: 'Vibration Y',      unit: '',    mean: 0.50, std: 0.28, min: 0.00, max: 1.00 },
+  Vibration_Z:     { label: 'Vibration Z',      unit: '',    mean: 0.48, std: 0.29, min: 0.00, max: 1.00 },
+  Torque_Nm:       { label: 'Torque',           unit: 'Nm',  mean: 123.57, std: 42.90, min: 50.06,  max: 199.91 },
+  Fuel_Efficiency: { label: 'Fuel Efficiency',  unit: 'k/L', mean: 22.49, std: 4.42, min: 15.05,  max: 29.99 },
+  Power_Output_kW: { label: 'Power Output',     unit: 'kW',  mean: 58.88, std: 22.54, min: 20.15,  max: 99.93 },
 };
 
-const FAULT_TYPES = ['bearing_wear', 'overheat', 'mechanical_bind'];
-
-const FIELDS_CHANGED = {
-  bearing_wear:    ['Vibration_X', 'Vibration_Y', 'Vibration_Z'],
-  overheat:        ['Temperature_C', 'Fuel_Efficiency'],
-  mechanical_bind: ['Torque_Nm', 'RPM'],
+// Decimal places to match mapReading()'s own formatting per field.
+const SENSOR_DECIMALS = {
+  Temperature_C: 2, RPM: 0, Vibration_X: 4, Vibration_Y: 4, Vibration_Z: 4,
+  Torque_Nm: 2, Fuel_Efficiency: 2, Power_Output_kW: 2,
 };
 
-function injectAnomaly({ equipment_id, fault_type, severity }) {
+function getSensorInfo() {
+  return Object.entries(SENSOR_STATS).map(([key, s]) => ({ key, ...s }));
+}
+
+// Sets one or more sensors on a running engine's live buffer to EXACT
+// caller-supplied values.
+// sensors: [{ key: 'Temperature_C', value: 140 }, ...]
+function injectAnomaly({ equipment_id, sensors }) {
   const state = engineState[equipment_id];
   if (!state) throw new Error(`Unknown engine: ${equipment_id}`);
-  if (!FAULT_TYPES.includes(fault_type)) throw new Error(`Unknown fault_type: ${fault_type} (expected one of ${FAULT_TYPES.join(', ')})`);
   if (state.buffer.length === 0) throw new Error(`${equipment_id}'s buffer is empty -- wait for the simulator to warm up`);
+  if (!Array.isArray(sensors) || sensors.length === 0) {
+    throw new Error(`sensors[] is required and must be non-empty, e.g. [{ "key": "Temperature_C", "value": 140 }]`);
+  }
 
-  const sev = Number(severity);
-  if (isNaN(sev) || sev <= 0) throw new Error('severity must be a positive number (e.g. 1-6 standard deviations)');
+  const targets = sensors.map(s => {
+    const key = s.key;
+    if (!SENSOR_STATS[key]) throw new Error(`Unknown or non-injectable sensor: ${key} (expected one of ${Object.keys(SENSOR_STATS).join(', ')})`);
+    const value = Number(s.value);
+    if (isNaN(value)) throw new Error(`Value for ${key} must be a number, got: ${s.value}`);
+    return { key, value };
+  });
 
   state.buffer = state.buffer.map(reading => {
     const r = { ...reading };
-    if (fault_type === 'bearing_wear') {
-      ['Vibration_X', 'Vibration_Y', 'Vibration_Z'].forEach(k => {
-        r[k] = (parseFloat(r[k]) + sev * SENSOR_STDS[k]).toFixed(4);
-      });
-    } else if (fault_type === 'overheat') {
-      r.Temperature_C   = (parseFloat(r.Temperature_C)   + sev * SENSOR_STDS.Temperature_C).toFixed(2);
-      r.Fuel_Efficiency = (parseFloat(r.Fuel_Efficiency) - sev * SENSOR_STDS.Fuel_Efficiency).toFixed(2);
-    } else if (fault_type === 'mechanical_bind') {
-      r.Torque_Nm = (parseFloat(r.Torque_Nm) + sev * SENSOR_STDS.Torque_Nm).toFixed(2);
-      r.RPM       = (parseFloat(r.RPM)       - sev * SENSOR_STDS.RPM).toFixed(0);
-    }
+    targets.forEach(({ key, value }) => {
+      r[key] = value.toFixed(SENSOR_DECIMALS[key]);
+    });
     return r;
   });
 
-  console.log(`[Inject] ${equipment_id} <- ${fault_type} @ severity=${sev} (next tick will reflect this)`);
+  const fieldsChanged = targets.map(t => t.key);
+
+  console.log(`[Inject] ${equipment_id} <- set [${targets.map(t => `${t.key}=${t.value}`).join(', ')}]`
+            + ' (next tick will reflect this)');
   return {
     equipment_id,
-    fault_type,
-    severity: sev,
+    sensors_applied: targets,
     buffer_size: state.buffer.length,
-    readings_affected: state.buffer.length,   // every buffered reading was perturbed, matching count
-    fields_changed: FIELDS_CHANGED[fault_type],
+    readings_affected: state.buffer.length,   // every buffered reading was set, matching count
+    fields_changed: fieldsChanged,
   };
 }
 
-module.exports = { startSimulator, getFleetStatus, getTruckStatus, injectAnomaly };
+module.exports = { startSimulator, getFleetStatus, getTruckStatus, injectAnomaly, getSensorInfo };

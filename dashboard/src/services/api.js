@@ -21,9 +21,23 @@ export const fetchModelInfo    = () => api.get('/api/model-info').then(r => r.da
 // CMAPSS engine window server-side and calls Flask's /predict_rul_demo.
 // Not connected to live engine monitoring -- validated on CMAPSS-native
 // data only (see ModelInfo.jsx and project notes).
-export const fetchRulDemo = (start = 0) => api.get(`/api/rul-demo?start=${start}`).then(r => r.data);
+// `unit` picks which of CMAPSS's real, distinct engine units to demo
+// (defaults to 1) -- these are genuinely different real engines, not
+// simulated variation.
+export const fetchRulDemo = (start = 0, unit = 1) =>
+  api.get(`/api/rul-demo?start=${start}&unit=${unit}`).then(r => r.data);
 
-// NEW: manual anomaly injection for testing/demo -- corrupts a running
-// engine's live buffer so the next natural prediction genuinely flags it.
-export const injectAnomaly = ({ equipment_id, fault_type, severity }) =>
-  api.post('/api/inject', { equipment_id, fault_type, severity }).then(r => r.data);
+// NEW: real CMAPSS unit ids available to pick from for the demo above.
+export const fetchRulDemoUnits = () => api.get('/api/rul-demo/units').then(r => r.data);
+
+// NEW: manual anomaly injection for testing/demo -- sets exact sensor
+// values on a running engine's live buffer, so the next natural
+// prediction genuinely evaluates them.
+// sensors: [{ key: 'Temperature_C', value: 140 }, ...]
+export const injectAnomaly = ({ equipment_id, sensors }) =>
+  api.post('/api/inject', { equipment_id, sensors }).then(r => r.data);
+
+// NEW: real mean/std/min/max per injectable sensor, measured from the
+// raw ziya07 CSV -- lets the UI show honest "typical range" guidance
+// and build presets from real numbers instead of guessing.
+export const fetchInjectSensorInfo = () => api.get('/api/inject/sensor-info').then(r => r.data);

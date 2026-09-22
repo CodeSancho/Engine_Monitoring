@@ -20,7 +20,11 @@
 //     your real services/api.js -- verify the import/signature matches.
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { fetchModelInfo, fetchRulDemo } from '../services/api';
+import { fetchModelInfo, fetchRulDemo, fetchRulDemoUnits } from '../services/api';
+
+// A handful of real CMAPSS units spread across the fleet to offer by
+// default, in case /api/rul-demo/units hasn't loaded yet.
+const FALLBACK_UNITS = [1, 25, 50, 75, 100];
 
 export default function ModelInfo() {
   const [info, setInfo]       = useState(null);
@@ -29,9 +33,17 @@ export default function ModelInfo() {
   const [rulPlaying, setRulPlaying] = useState(false);
   const [rulError, setRulError] = useState(false);
   const [rulDone, setRulDone] = useState(false);
+  const [availableUnits, setAvailableUnits] = useState(FALLBACK_UNITS);
+  const [selectedUnit, setSelectedUnit]     = useState(1);
 
   useEffect(() => {
     fetchModelInfo().then(setInfo).catch(() => setInfoError(true));
+    // Real CMAPSS unit ids -- lets the user pick an actual different
+    // engine (each with its own real run-to-failure length) rather than
+    // always demoing unit 1.
+    fetchRulDemoUnits().then(res => {
+      if (Array.isArray(res.units) && res.units.length > 0) setAvailableUnits(res.units);
+    }).catch(() => {/* keep FALLBACK_UNITS */});
   }, []);
 
   // Steps through the engine's life 5 cycles at a time, fetching a fresh
@@ -45,7 +57,7 @@ export default function ModelInfo() {
     const tick = async (start) => {
       if (cancelled) return;
       try {
-        const res = await fetchRulDemo(start);
+        const res = await fetchRulDemo(start, selectedUnit);
         if (cancelled) return;
         setRulHistory(prev => [...prev, { cycle: res.cycle_range[1], rul: res.rul_cycles }]);
         if (res.is_final_window) {
@@ -60,7 +72,7 @@ export default function ModelInfo() {
     };
     tick(0);
     return () => { cancelled = true; };
-  }, [rulPlaying]);
+  }, [rulPlaying, selectedUnit]);
 
   const startRulDemo = () => {
     setRulHistory([]);
@@ -127,13 +139,32 @@ export default function ModelInfo() {
       <div className="rul-demo-panel">
         <div className="detail-section-title">RUL Model Demo — live decline, CMAPSS-native input only</div>
         <div className="model-sub" style={{ marginBottom: 12 }}>
-          Steps through a real CMAPSS engine's full life (unit 1, 192 real cycles) and predicts
-          RUL for each window along the way — watch the predicted remaining life genuinely decline
-          as the engine approaches its real, recorded failure point. Not connected to live engine
-          monitoring above — the two use structurally different sensors and cannot be mapped to each other.
+          Steps through a real CMAPSS engine's full life and predicts RUL for each window along
+          the way — watch the predicted remaining life genuinely decline as the engine approaches
+          its real, recorded failure point. Pick any of CMAPSS's real, distinct engine units below —
+          each ran to a genuinely different real failure point, this isn't simulated variation. Not
+          connected to live engine monitoring above — the two use structurally different sensors and
+          cannot be mapped to each other.
         </div>
+
+        <label className="inject-field" style={{ marginBottom: 12, maxWidth: 220 }}>
+          <span>CMAPSS engine unit</span>
+          <select
+            value={selectedUnit}
+            disabled={rulPlaying}
+            onChange={e => {
+              setSelectedUnit(parseInt(e.target.value, 10));
+              setRulHistory([]);
+              setRulDone(false);
+              setRulError(false);
+            }}
+          >
+            {availableUnits.map(u => <option key={u} value={u}>Unit {u}</option>)}
+          </select>
+        </label>
+
         <button className="back-btn" onClick={startRulDemo} disabled={rulPlaying}>
-          {rulPlaying ? 'Running…' : rulHistory.length > 0 ? 'Replay' : 'Run Live RUL Demo'}
+          {rulPlaying ? 'Running…' : rulHistory.length > 0 ? 'Replay' : `Run Live RUL Demo (Unit ${selectedUnit})`}
         </button>
         {rulError && <div className="empty-state" style={{ marginTop: 8 }}>Demo request failed — is the backend/Flask service running?</div>}
 
