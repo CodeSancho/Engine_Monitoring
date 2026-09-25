@@ -22,9 +22,11 @@ import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { fetchModelInfo, fetchRulDemo, fetchRulDemoUnits } from '../services/api';
 
-// A handful of real CMAPSS units spread across the fleet to offer by
-// default, in case /api/rul-demo/units hasn't loaded yet.
-const FALLBACK_UNITS = [1, 25, 50, 75, 100];
+// A handful of real CMAPSS units spread across the fleet to offer before
+// the real, richer list has loaded. totalCycles is left null here (never
+// shown as a real number) until the actual fetch from /api/rul-demo/units
+// replaces this with real {unit, totalCycles} pairs.
+const FALLBACK_UNITS = [1, 25, 50, 75, 100].map(u => ({ unit: u, totalCycles: null }));
 
 export default function ModelInfo() {
   const [info, setInfo]       = useState(null);
@@ -33,14 +35,15 @@ export default function ModelInfo() {
   const [rulPlaying, setRulPlaying] = useState(false);
   const [rulError, setRulError] = useState(false);
   const [rulDone, setRulDone] = useState(false);
-  const [availableUnits, setAvailableUnits] = useState(FALLBACK_UNITS);
+  const [availableUnits, setAvailableUnits] = useState(FALLBACK_UNITS); // [{unit, totalCycles}, ...]
   const [selectedUnit, setSelectedUnit]     = useState(1);
 
   useEffect(() => {
     fetchModelInfo().then(setInfo).catch(() => setInfoError(true));
-    // Real CMAPSS unit ids -- lets the user pick an actual different
-    // engine (each with its own real run-to-failure length) rather than
-    // always demoing unit 1.
+    // Real CMAPSS unit ids + their real total cycle count -- lets the
+    // dropdown show "Unit 50 — 198 real cycles" instead of a bare id,
+    // and lets us show where the selected unit's real lifespan falls
+    // relative to the other 99 real engines.
     fetchRulDemoUnits().then(res => {
       if (Array.isArray(res.units) && res.units.length > 0) setAvailableUnits(res.units);
     }).catch(() => {/* keep FALLBACK_UNITS */});
@@ -79,6 +82,27 @@ export default function ModelInfo() {
     setRulError(false);
     setRulDone(false);
     setRulPlaying(true);
+  };
+
+  // Real min/max/median lifespan across whatever units we actually have
+  // loaded -- computed from the fetched data, not a guess -- so we can
+  // show the selected unit's real lifespan in context ("longer-lived
+  // than most", etc.) instead of just a bare cycle count.
+  const knownCycles = availableUnits.map(u => u.totalCycles).filter(c => c != null);
+  const cycleRange  = knownCycles.length > 0
+    ? { min: Math.min(...knownCycles), max: Math.max(...knownCycles) }
+    : null;
+  const selectedMeta = availableUnits.find(u => u.unit === selectedUnit) || { unit: selectedUnit, totalCycles: null };
+
+  const pickRandomUnit = () => {
+    if (rulPlaying || availableUnits.length === 0) return;
+    const others = availableUnits.filter(u => u.unit !== selectedUnit);
+    const pool = others.length > 0 ? others : availableUnits;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    setSelectedUnit(pick.unit);
+    setRulHistory([]);
+    setRulDone(false);
+    setRulError(false);
   };
 
   if (infoError) {
@@ -147,21 +171,52 @@ export default function ModelInfo() {
           cannot be mapped to each other.
         </div>
 
-        <label className="inject-field" style={{ marginBottom: 12, maxWidth: 220 }}>
-          <span>CMAPSS engine unit</span>
-          <select
-            value={selectedUnit}
-            disabled={rulPlaying}
-            onChange={e => {
-              setSelectedUnit(parseInt(e.target.value, 10));
-              setRulHistory([]);
-              setRulDone(false);
-              setRulError(false);
-            }}
-          >
-            {availableUnits.map(u => <option key={u} value={u}>Unit {u}</option>)}
-          </select>
+        <label className="inject-field" style={{ marginBottom: 6, maxWidth: 280 }}>
+          <span>CMAPSS engine unit ({availableUnits.length} real engines available)</span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <select
+              value={selectedUnit}
+              disabled={rulPlaying}
+              style={{ flex: 1 }}
+              onChange={e => {
+                setSelectedUnit(parseInt(e.target.value, 10));
+                setRulHistory([]);
+                setRulDone(false);
+                setRulError(false);
+              }}
+            >
+              {availableUnits.map(u => (
+                <option key={u.unit} value={u.unit}>
+                  Unit {u.unit}{u.totalCycles != null ? ` — ${u.totalCycles} real cycles` : ''}
+                </option>
+              ))}
+            </select>
+            <button className="back-btn" onClick={pickRandomUnit} disabled={rulPlaying} title="Pick a random real engine unit">
+              🎲
+            </button>
+          </div>
         </label>
+
+        {/* Where this unit's real lifespan falls among the other real
+            engines -- purely descriptive, computed from the same fetched
+            list, not a new inference. */}
+        {cycleRange && selectedMeta.totalCycles != null && (
+          <div style={{ marginBottom: 12, maxWidth: 280 }}>
+            <div style={{
+              position: 'relative', height: 6, borderRadius: 3,
+              background: '#334155', marginTop: 4,
+            }}>
+              <div style={{
+                position: 'absolute', top: -3, height: 12, width: 2,
+                background: '#B87333',
+                left: `${((selectedMeta.totalCycles - cycleRange.min) / Math.max(1, cycleRange.max - cycleRange.min)) * 100}%`,
+              }} />
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+              {selectedMeta.totalCycles} cycles — real range across {availableUnits.length} engines: {cycleRange.min}–{cycleRange.max}
+            </div>
+          </div>
+        )}
 
         <button className="back-btn" onClick={startRulDemo} disabled={rulPlaying}>
           {rulPlaying ? 'Running…' : rulHistory.length > 0 ? 'Replay' : `Run Live RUL Demo (Unit ${selectedUnit})`}

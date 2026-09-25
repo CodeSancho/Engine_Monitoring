@@ -13,6 +13,10 @@
  *     no longer matches the new two-tier severity ('NORMAL'/'ANOMALY').
  *     The old map would have silently given every alert the same sort
  *     priority, since 'ANOMALY' was never a key in it.
+ *  3. Added top_anomalous_features to the stored alert (it was computed
+ *     by Flask and available, but previously dropped before reaching the
+ *     alert store) so the frontend can show which sensor drove the alert
+ *     and its likely physical component -- see AlertPanel.jsx.
  */
 
 let alerts     = [];   // all alerts ever created
@@ -24,7 +28,7 @@ function initAlertStore() {
   console.log('[AlertService] Initialised');
 }
 
-function createAlert({ equipment_id, severity, anomaly_score, message, feature_snapshot }) {
+function createAlert({ equipment_id, severity, anomaly_score, message, feature_snapshot, top_anomalous_features }) {
   const alert = {
     id:             alertIdSeq++,
     equipment_id,
@@ -32,6 +36,7 @@ function createAlert({ equipment_id, severity, anomaly_score, message, feature_s
     anomaly_score,
     message,
     feature_snapshot: feature_snapshot || {},
+    top_anomalous_features: top_anomalous_features || [],
     timestamp:      new Date().toISOString(),
     acknowledged:   false,
     acknowledged_at: null,

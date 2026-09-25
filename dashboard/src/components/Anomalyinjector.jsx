@@ -23,6 +23,7 @@
 //     always visible, never hidden behind a multiplier.
 import { useState, useEffect, useRef } from 'react';
 import { injectAnomaly, fetchInjectSensorInfo, fetchFleetStatus } from '../services/api';
+import { getComponentInfo } from '../utils/engineComponents';
 
 const SEV_COLOR = { NORMAL: '#22c55e', ANOMALY: '#ef4444' };
 
@@ -198,6 +199,7 @@ export default function AnomalyInjector() {
           }}>
             {sensorInfo.map(s => {
               const checked = s.key in values;
+              const comp = getComponentInfo(s.key);
               return (
                 <div key={s.key} style={{
                   display: 'flex', flexDirection: 'column', gap: 4,
@@ -210,6 +212,9 @@ export default function AnomalyInjector() {
                     <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{s.label}</span>
                     <span style={{ fontSize: 11, color: '#64748b' }}>{s.unit}</span>
                   </div>
+                  {comp && (
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{comp.component}</div>
+                  )}
                   <div style={{ fontSize: 11, color: '#64748b' }}>
                     typical {s.min}–{s.max} (avg {s.mean})
                   </div>

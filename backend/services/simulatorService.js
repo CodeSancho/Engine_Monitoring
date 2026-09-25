@@ -20,6 +20,9 @@
  *     distinct, non-overlapping segment of the real CSV and loops within
  *     that segment independently -- real data assignment, not fabricated
  *     variation. See assignSegments() / replayRows() below.
+ *  5. Engine count is now configurable (ENGINE_COUNT below) instead of a
+ *     hardcoded 3-entry array -- see the honest ceiling note on
+ *     ENGINE_COUNT for why "a lot" has a real, data-driven limit here.
  */
 
 const fs          = require('fs');
@@ -27,15 +30,37 @@ const csv         = require('csv-parser');
 const axios       = require('axios');
 const { createAlert } = require('./alertService');
 
-// ── Engine config — 3 virtual engines pulling from the same dataset ───────────
-const ENGINES = [
-  { id: 'ENGINE-1', name: 'Engine 1' },
-  { id: 'ENGINE-2', name: 'Engine 2' },
-  { id: 'ENGINE-3', name: 'Engine 3' },
-];
+// ── Engine config ──────────────────────────────────────────────────────────
+// How many virtual engines to run, each replaying its OWN real, non-
+// overlapping segment of the 1000-row ziya07 CSV (see assignSegments()).
+// Override with the ENGINE_COUNT env var; defaults to 20 here.
+//
+// THE HONEST CEILING: ziya07 has only 1000 total rows and no real per-
+// engine column (unlike CMAPSS, which genuinely has 100 separate units --
+// see rulDemo.js). More engines means smaller segments:
+//   1000 rows / N engines = rows per engine
+// Each prediction needs a full WINDOW_SIZE (30) rows to form one window.
+// So up to floor(1000 / 30) = 33 engines, every engine gets a genuinely
+// unique row for every reading in its window. Past 33, an engine's
+// segment is smaller than one window, so its buffer starts repeating
+// real rows WITHIN a single prediction window -- not fabricated data,
+// just less variety feeding one prediction. 20 is chosen as a solid
+// jump from 3 while staying comfortably under that 33-engine line.
+const ENGINE_COUNT = parseInt(process.env.ENGINE_COUNT, 10) || 20;
+const ENGINES = Array.from({ length: ENGINE_COUNT }, (_, i) => ({
+  id:   `ENGINE-${i + 1}`,
+  name: `Engine ${i + 1}`,
+}));
 
 const WINDOW_SIZE    = 30;   // readings per prediction window
 const EMIT_INTERVAL  = 1500; // ms between readings (1.5s = fast demo)
+
+if (ENGINE_COUNT > 33) {
+  console.warn(`[Simulator] ENGINE_COUNT=${ENGINE_COUNT} exceeds 33 -- each engine's `
+    + `segment (${Math.floor(1000 / ENGINE_COUNT)} rows) is now smaller than the `
+    + `${WINDOW_SIZE}-row prediction window, so buffers will repeat real rows within `
+    + `a single window. Not fabricated, just less real variety per prediction.`);
+}
 
 // Per-engine state
 const engineState = {};
@@ -189,6 +214,7 @@ function replayRows(rows, io, flaskUrl) {
               anomaly_score:    result.anomaly_score,
               message:          result.message,
               feature_snapshot: result.feature_snapshot,
+              top_anomalous_features: result.top_anomalous_features,
             });
 
             io.emit('new_alert', alert);

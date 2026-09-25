@@ -16,6 +16,7 @@
 //     assigns engine "models" (Komatsu/Cat naming was dropped in favor
 //     of generic Engine 1/2/3).
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { getComponentInfo } from '../utils/engineComponents';
 
 const SEV_COLOR = { NORMAL: '#22c55e', ANOMALY: '#ef4444' };
 
@@ -100,14 +101,27 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
       {prediction && prediction.top_anomalous_features && (
         <div className="detail-features">
           <div className="detail-section-title">Top Anomalous Feature Slopes</div>
-          {prediction.top_anomalous_features.map((f, i) => (
-            <div key={i} className="feature-row">
-              <span className="feature-row__name">{f.split(':')[0]}</span>
-              <span className="feature-row__val" style={{ color: '#f97316' }}>
-                {f.split(':')[1]}
-              </span>
-            </div>
-          ))}
+          <div className="model-sub" style={{ marginBottom: 8 }}>
+            "Likely part" is a general association, not a diagnosis — the model itself only sees raw sensor numbers.
+          </div>
+          {prediction.top_anomalous_features.map((f, i) => {
+            const comp = getComponentInfo(f);
+            return (
+              <div key={i} className="feature-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="feature-row__name">{f.split(':')[0]}</span>
+                  <span className="feature-row__val" style={{ color: '#f97316' }}>
+                    {f.split(':')[1]}
+                  </span>
+                </div>
+                {comp && (
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                    Likely part: <strong>{comp.component}</strong> ({comp.detail})
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

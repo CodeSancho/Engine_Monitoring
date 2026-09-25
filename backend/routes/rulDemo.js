@@ -35,21 +35,30 @@ const WINDOW_SIZE = 30;
 
 // Cache is now per-unit, not a single hardcoded unit-1 array.
 const _unitRowsCache = new Map();   // unitId -> rows[]
-let _allUnitIds = null;             // sorted list of every real unit id in the file, for validation/listing
+let _allUnitsMeta = null;           // [{ unit, totalCycles }, ...] sorted by unit id, real values from the file
 
-function loadAllUnitIds() {
-  if (_allUnitIds) return _allUnitIds;
+// Real total cycle count per unit (its last recorded cycle number before
+// failure) -- computed once from the actual file, not estimated. This is
+// what lets the frontend show "Unit 50 — 198 real cycles" instead of a
+// bare number, so picking a unit means picking a genuinely different
+// engine life, not an arbitrary id.
+function loadAllUnitsMeta() {
+  if (_allUnitsMeta) return _allUnitsMeta;
   if (!fs.existsSync(CMAPSS_PATH)) {
     throw new Error(`CMAPSS data file not found at ${CMAPSS_PATH}`);
   }
-  const ids = new Set();
+  const maxCycle = new Map(); // unit -> highest cycle seen
   const lines = fs.readFileSync(CMAPSS_PATH, 'utf-8').trim().split('\n');
   for (const line of lines) {
-    const unit = Number(line.trim().split(/\s+/)[0]);
-    ids.add(unit);
+    const parts = line.trim().split(/\s+/);
+    const unit  = Number(parts[0]);
+    const cycle = Number(parts[1]);
+    if (!maxCycle.has(unit) || cycle > maxCycle.get(unit)) maxCycle.set(unit, cycle);
   }
-  _allUnitIds = Array.from(ids).sort((a, b) => a - b);
-  return _allUnitIds;
+  _allUnitsMeta = Array.from(maxCycle.entries())
+    .map(([unit, totalCycles]) => ({ unit, totalCycles }))
+    .sort((a, b) => a.unit - b.unit);
+  return _allUnitsMeta;
 }
 
 function loadUnitRows(unitId) {
@@ -71,11 +80,12 @@ function loadUnitRows(unitId) {
   return rows;
 }
 
-// GET /api/rul-demo/units  — real unit ids available to demo, so the
-// frontend can offer a genuine selection instead of guessing valid ids.
+// GET /api/rul-demo/units  — every real CMAPSS unit id, each with its
+// real total cycle count, so the frontend can offer a genuine selection
+// instead of guessing valid ids or fabricating lifespans.
 router.get('/units', (req, res) => {
   try {
-    res.json({ units: loadAllUnitIds() });
+    res.json({ units: loadAllUnitsMeta() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -90,7 +100,8 @@ router.get('/', async (req, res) => {
   try {
     let unit = parseInt(req.query.unit, 10);
     if (isNaN(unit) || unit < 1) unit = 1;
-    const allUnitIds = loadAllUnitIds();
+    const allUnitsMeta = loadAllUnitsMeta();
+    const allUnitIds = allUnitsMeta.map(u => u.unit);
     if (!allUnitIds.includes(unit)) {
       return res.status(400).json({ error: `Unit ${unit} not found. Valid units: ${allUnitIds[0]}-${allUnitIds[allUnitIds.length - 1]}` });
     }
