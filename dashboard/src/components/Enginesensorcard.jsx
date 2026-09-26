@@ -10,6 +10,12 @@
 //
 // Put the photo at src/assets/engine-card.webp (or wherever your app
 // serves static assets) and adjust IMG_SRC below to match.
+//
+// STYLE PASS (see conversation): sev-badge was a filled colored box
+// (backgroundColor set inline) -- now plain colored text, no box, same
+// as TruckDetail/AlertPanel/AnomalyInjector. Fallback gray for an
+// unrecognized severity swapped to var(--text3) instead of a hardcoded
+// hex so it tracks the palette.
 import IMG_SRC from '../assets/engine-card.webp';
 
 const SEV_COLOR = { NORMAL: '#5f9b74', ANOMALY: '#b25c53' };
@@ -33,7 +39,7 @@ function fmtVal(v, unit, decimals) {
 
 export default function EngineSensorCard({ truck, onSelect }) {
   const sev = truck.severity || 'NORMAL';
-  const color = SEV_COLOR[sev] || '#94a3b8';
+  const color = SEV_COLOR[sev] || 'var(--text3)';
   const snap = truck.feature_snapshot || {};
   const hasSnap = snap.temperature_mean != null;
 
@@ -48,7 +54,7 @@ export default function EngineSensorCard({ truck, onSelect }) {
           <div className="engine-card__id">{truck.equipment_id}</div>
           <div className="engine-card__name">{truck.name}</div>
         </div>
-        <span className="sev-badge" style={{ backgroundColor: color }}>{sev}</span>
+        <span className="sev-badge" style={{ color }}>{sev}</span>
       </div>
 
       <div className="engine-card__art">

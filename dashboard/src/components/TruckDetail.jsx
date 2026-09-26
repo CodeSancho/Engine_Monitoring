@@ -24,6 +24,15 @@
 //     desaturated set. Misc inline grays (#94a3b8, #f97316) swapped for
 //     the app's --text3 / --copper variables so they track future
 //     palette tweaks automatically instead of drifting out of sync.
+//  5. BUG FIX: the Y-axis domain used multiplicative padding
+//     (min * 0.98, max * 1.02), which only pads correctly when every
+//     value is positive. Vibration_X/Vibration_Y oscillate around
+//     zero and go negative, where that math pulls the floor toward
+//     zero -- above the real minimum -- and clips the bottom of the
+//     line instead of padding it; a flat signal also collapsed the
+//     domain to zero height. Replaced with additive padding based on
+//     the actual data range, which handles negative values and flat
+//     signals correctly.
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { getComponentInfo } from '../utils/engineComponents';
 
@@ -40,8 +49,17 @@ const SENSOR_KEYS = [
 
 function SensorChart({ data, sensor }) {
   const vals = data.map(r => parseFloat(r[sensor.key] || 0));
-  const mn   = Math.min(...vals) * 0.98;
-  const mx   = Math.max(...vals) * 1.02;
+  const mn = Math.min(...vals);
+  const mx = Math.max(...vals);
+  // Additive padding, not multiplicative: multiplying by 0.98/1.02 only
+  // pads correctly when every value is positive. Vibration_X/Vibration_Y
+  // oscillate around zero and go negative, where mn * 0.98 pulls the
+  // floor *toward* zero (i.e. above the real minimum) and clips the
+  // line instead of padding it. A flat signal (mn === mx) also
+  // collapsed to a zero-height domain and could make the line vanish.
+  const range = mx - mn;
+  const pad = range === 0 ? (Math.abs(mx) || 1) * 0.1 : range * 0.08;
+  const domain = [mn - pad, mx + pad];
   const chartData = data.map((r, i) => ({ i, val: parseFloat(r[sensor.key] || 0) }));
 
   return (
@@ -52,9 +70,9 @@ function SensorChart({ data, sensor }) {
       <ResponsiveContainer width="100%" height={100}>
         <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
           <XAxis dataKey="i" hide />
-          <YAxis domain={[mn, mx]} tick={{ fontSize: 9, fill: 'var(--text3)' }} width={40} />
+          <YAxis domain={domain} tick={{ fontSize: 9, fill: '#7a828d' }} width={40} />
           <Tooltip
-            contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: 'var(--text)' }}
+            contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: '#2b3138' }}
             formatter={v => [`${v.toFixed(2)} ${sensor.unit}`, sensor.label]}
             labelFormatter={() => ''}
           />
@@ -78,7 +96,7 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
       <div className="truck-detail__nav">
         <button className="back-btn" onClick={onBack}>← Fleet Overview</button>
         <div className="truck-detail__title">{truck.name || truckId}</div>
-        <div className="sev-badge" style={{ backgroundColor: color }}>{sev}</div>
+        <div className="sev-badge" style={{ color }}>{sev}</div>
       </div>
 
       {/* Top stats row */}

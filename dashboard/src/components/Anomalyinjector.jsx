@@ -14,9 +14,20 @@
 //  - "back-btn" was being reused for three unrelated things (engine
 //    picker, preset chips, the primary submit action). Split into
 //    purpose-built classes: .engine-pick, .btn-util, .btn-inject.
+//  - Engine picker now shows each engine's real photo (same treatment
+//    as EngineSensorCard's .engine-card__art) instead of a plain
+//    name+badge button -- selecting one visually brings it forward
+//    (full opacity + lift) so it's clear which engine you're about to
+//    inject into. CORRECTION: there's no per-engine photo lookup in
+//    this codebase -- EngineSensorCard just imports one shared static
+//    asset (src/assets/engine-card.webp), same generic engine photo
+//    for every truck. Imported that directly below instead of the
+//    made-up getEngineImage() from the previous pass, which doesn't
+//    exist and broke the build.
 import { useState, useEffect, useRef } from 'react';
 import { injectAnomaly, fetchInjectSensorInfo, fetchFleetStatus } from '../services/api';
 import { getComponentInfo } from '../utils/engineComponents';
+import engineCardImg from '../assets/engine-card.webp';
 
 const SEV_COLOR = { NORMAL: '#5f9b74', ANOMALY: '#b25c53' };
 
@@ -154,10 +165,14 @@ export default function AnomalyInjector() {
                 key={e.equipment_id}
                 onClick={() => setEquipmentId(e.equipment_id)}
                 className={`engine-pick${selected ? ' engine-pick--selected' : ''}`}
-                style={selected ? { borderColor: color } : undefined}
               >
-                <span className="engine-pick__name">{e.name || e.equipment_id}</span>
-                <span className="sev-badge" style={{ backgroundColor: color }}>{e.severity}</span>
+                <div className="engine-pick__art">
+                  <img className="engine-pick__photo" src={engineCardImg} alt={e.name || e.equipment_id} />
+                </div>
+                <div className="engine-pick__meta">
+                  <span className="engine-pick__name">{e.name || e.equipment_id}</span>
+                  <span className="sev-badge" style={{ color }}>{e.severity}</span>
+                </div>
               </button>
             );
           })}

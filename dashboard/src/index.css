@@ -172,8 +172,8 @@ button {
 }
 
 .nav-btn--active {
-  background: var(--sky);
-  color: #ffffff;
+  background: rgba(46, 134, 171, 0.12);
+  color: var(--sky);
 }
 
 .badge {
@@ -231,19 +231,6 @@ button {
   height: 8px;
   border-radius: 50%;
   background: currentColor;
-
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.4;
-  }
 }
 
 
@@ -252,14 +239,15 @@ button {
    ========================================================= */
 
 .sev-badge {
-  padding: 3px 10px;
-  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
 
   font-size: 11px;
   font-weight: 700;
 
-  color: #ffffff;
   letter-spacing: 0.5px;
+  text-transform: uppercase;
 
   white-space: nowrap;
 }
@@ -731,17 +719,18 @@ button {
 .alert-counts {
   display: flex;
 
-  gap: 8px;
+  gap: 16px;
 }
 
 .count-chip {
-  padding: 4px 10px;
+  padding: 0;
 
-  border-radius: 12px;
+  border-radius: 0;
 
   font-size: 11px;
-
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
 .alert-card {
@@ -874,9 +863,9 @@ button {
 /* ---------- Acknowledge button ---------- */
 
 .btn-acknowledge {
-  background: var(--green);
+  background: rgba(95, 143, 114, 0.14);
 
-  color: #ffffff;
+  color: var(--green-dark);
 
   padding: 5px 14px;
 
@@ -884,17 +873,14 @@ button {
 
   font-size: 12px;
 
-  font-weight: 600;
+  font-weight: 700;
 
   transition:
-    background 0.2s,
-    opacity 0.2s;
+    background 0.2s;
 }
 
 .btn-acknowledge:hover {
-  background: var(--green-dark);
-
-  opacity: 0.95;
+  background: rgba(95, 143, 114, 0.24);
 }
 
 
@@ -1231,38 +1217,72 @@ button {
   color: var(--text3);
 }
 
-/* Engine picker -- flat list, no card box. Selection shown with an
-   underline + accent color, not a bordered/shadowed box. */
+/* Engine picker -- each engine shown as its real photo thumbnail
+   (same treatment as EngineSensorCard's .engine-card__art), not a
+   text-only button. Selecting one visually brings it forward: full
+   opacity + a slight lift, everything else recedes. */
 .engine-pick-row {
   display: flex;
-  gap: 20px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
 .engine-pick {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  padding: 0 0 6px;
+  align-items: stretch;
+  gap: 6px;
+  width: 140px;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
-  transition: border-color 0.15s;
+  padding: 0;
+  opacity: 0.55;
+  transform: scale(1);
+  transition: opacity 0.2s, transform 0.2s;
 }
 
 .engine-pick:hover {
-  border-bottom-color: var(--border);
+  opacity: 0.8;
 }
 
 .engine-pick--selected {
-  border-bottom-width: 2px;
+  opacity: 1;
+  transform: scale(1.03);
+}
+
+.engine-pick__art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+.engine-pick__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(0.9) contrast(1.02);
+}
+
+.engine-pick__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
 }
 
 .engine-pick__name {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Utility buttons -- flat text controls, no bordered box. Distinct
@@ -1370,27 +1390,28 @@ button {
   border-color: var(--sky);
 }
 
-/* Primary action -- solid, rectangular. The one deliberately "boxed"
-   element in the injector, because a primary submit button should
-   read as a button, not a link. */
+/* Primary action -- text only, no button box. "Inject" reads as an
+   action through weight + underline, not a filled background. */
 .btn-inject {
-  margin-top: 8px;
-  background: var(--text);
-  color: #ffffff;
-  padding: 9px 20px;
-  border-radius: var(--radius-sm);
+  margin-top: 10px;
+  background: transparent;
+  color: var(--text);
+  padding: 4px 0;
+  border-radius: 0;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.2px;
-  transition: background 0.15s;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s, color 0.15s;
 }
 
 .btn-inject:hover:not(:disabled) {
-  background: #1c2026;
+  text-decoration-color: var(--text);
 }
 
 .btn-inject:disabled {
-  background: var(--text3);
+  color: var(--text3);
   cursor: not-allowed;
 }
 
@@ -1736,4 +1757,10 @@ button {
   .feat-name {
     width: 140px;
   }
+}
+
+/* Small utility -- used by EngineSensorCard's anomaly % readout, was
+   referenced but never actually defined. */
+.mono {
+  font-family: 'IBM Plex Mono', monospace;
 }

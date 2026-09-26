@@ -14,13 +14,21 @@
 //     CRITICAL) -- none of which are ever set on a real alert anymore
 //     (severity is two-tier: NORMAL/ANOMALY, and only ANOMALY alerts
 //     are created), so the count chips silently never rendered.
+//  4. STYLE PASS: SEV_COLOR's bright #22c55e/#ef4444 swapped for the
+//     same muted green/red used everywhere else (EngineSensorCard,
+//     TruckDetail). sev-badge and count-chip were filled colored boxes
+//     (backgroundColor set inline) -- both are now plain colored text,
+//     no box, matching the rest of the app. The "likely part" note was
+//     still using leftover dark-theme colors (#94a3b8 on a light page,
+//     and #cbd5e1 -- a *light* slate meant for dark backgrounds, nearly
+//     invisible here) -- fixed to the light-theme text tokens.
 import { acknowledgeAlert } from '../services/api';
 import { getComponentInfo } from '../utils/engineComponents';
 
-const SEV_COLOR = { NORMAL: '#22c55e', ANOMALY: '#ef4444' };
+const SEV_COLOR = { NORMAL: '#5f9b74', ANOMALY: '#b25c53' };
 
 function AlertCard({ alert, onAcknowledge, onSelectTruck }) {
-  const color = SEV_COLOR[alert.severity] || '#94a3b8'; // unrecognized severity -> neutral gray, never green
+  const color = SEV_COLOR[alert.severity] || 'var(--text3)'; // unrecognized severity -> neutral gray, never green
   const time  = new Date(alert.timestamp).toLocaleTimeString();
   const snap  = alert.feature_snapshot || {};
   const topFeature = alert.top_anomalous_features?.[0];
@@ -37,7 +45,7 @@ function AlertCard({ alert, onAcknowledge, onSelectTruck }) {
     <div className="alert-card" style={{ borderLeftColor: color }}>
       <div className="alert-card__header">
         <div className="alert-card__left">
-          <span className="sev-badge" style={{ backgroundColor: color }}>{alert.severity}</span>
+          <span className="sev-badge" style={{ color }}>{alert.severity}</span>
           <span className="alert-card__equip" onClick={() => onSelectTruck(alert.equipment_id)}>
             {alert.equipment_id}
           </span>
@@ -62,8 +70,8 @@ function AlertCard({ alert, onAcknowledge, onSelectTruck }) {
       )}
 
       {comp && (
-        <div className="alert-card__component" style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-          Likely part: <strong style={{ color: '#cbd5e1' }}>{comp.component}</strong> ({comp.detail})
+        <div className="alert-card__component" style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+          Likely part: <strong style={{ color: 'var(--text)' }}>{comp.component}</strong> ({comp.detail})
           <div style={{ fontSize: 11, marginTop: 2 }}>{comp.note}</div>
         </div>
       )}
@@ -95,7 +103,7 @@ export default function AlertPanel({ alerts, onAcknowledge, onSelectTruck }) {
         <div className="alert-counts">
           {Object.entries(counts).map(([sev, cnt]) => cnt > 0 && (
             <span key={sev} className="count-chip"
-              style={{ backgroundColor: SEV_COLOR[sev] || '#94a3b8', color: '#fff' }}>
+              style={{ color: SEV_COLOR[sev] || 'var(--text3)' }}>
               {cnt} {sev}
             </span>
           ))}
