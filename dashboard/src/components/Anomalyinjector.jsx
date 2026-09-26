@@ -5,27 +5,20 @@
 // unmodified prediction+alert pipeline react to it naturally on its next
 // tick. Does not fake an alert directly.
 //
-// REDESIGN (see conversation):
-//  1. Engine picker is now a row of live status cards (name + current
-//     severity, polled from /api/fleet/status) instead of a plain
-//     <select> -- you can see which engine is already flagged before
-//     you even pick one.
-//  2. Severity-in-σ slider removed entirely. Instead, each sensor has a
-//     real numeric input for the EXACT value to inject, with the real
-//     measured typical range (mean/min/max from the raw ziya07 CSV,
-//     served by GET /api/inject/sensor-info) shown alongside it as
-//     guidance -- not a guess.
-//  3. The old 3 fault-type presets (bearing_wear / overheat /
-//     mechanical_bind) are now just "fill with a realistic fault"
-//     buttons: they populate the relevant sensors' number inputs with
-//     mean ± 4σ (computed from the real stats above), which you can
-//     then see and edit before injecting -- the exact number sent is
-//     always visible, never hidden behind a multiplier.
+// STYLE PASS (see conversation):
+//  - Moved off ad-hoc dark-theme inline styles (#334155 borders, neon
+//    rgba(96,165,250,...) glows) onto the same light card system as the
+//    rest of the app (FleetOverview / EngineSensorCard).
+//  - SEV_COLOR now matches FleetOverview's muted sage/brick palette
+//    instead of saturated green/red -- one status language app-wide.
+//  - "back-btn" was being reused for three unrelated things (engine
+//    picker, preset chips, the primary submit action). Split into
+//    purpose-built classes: .engine-pick, .btn-util, .btn-inject.
 import { useState, useEffect, useRef } from 'react';
 import { injectAnomaly, fetchInjectSensorInfo, fetchFleetStatus } from '../services/api';
 import { getComponentInfo } from '../utils/engineComponents';
 
-const SEV_COLOR = { NORMAL: '#22c55e', ANOMALY: '#ef4444' };
+const SEV_COLOR = { NORMAL: '#5f9b74', ANOMALY: '#b25c53' };
 
 // Preset fault bundles -- which sensors they touch and which direction
 // (+1 = push toward mean + 4σ, -1 = push toward mean - 4σ). The actual
@@ -108,7 +101,7 @@ export default function AnomalyInjector() {
       .map(([key, v]) => ({ key, value: Number(v) }));
 
     if (!equipmentId) {
-      setStatus({ ok: false, message: 'No engine available yet -- wait for the simulator to come online.' });
+      setStatus({ ok: false, message: 'No engine available yet — wait for the simulator to come online.' });
       return;
     }
     if (sensors.length === 0) {
@@ -135,38 +128,36 @@ export default function AnomalyInjector() {
   };
 
   return (
-    <div className="anomaly-injector model-card">
-      <div className="detail-section-title">Manual Anomaly Injection (testing/demo)</div>
-      <div className="model-sub" style={{ marginBottom: 12 }}>
+    <div className="injector model-card">
+      <div className="injector__header">
+        <div className="detail-section-title">Manual Anomaly Injection</div>
+        <span className="injector__tag">Testing / Demo</span>
+      </div>
+      <p className="injector__intro">
         Sets exact values on a running engine's live sensor buffer. The next natural
         prediction tick will genuinely evaluate them — this does not fake an alert,
         it only sets input data honestly to whatever value you choose.
-      </div>
+      </p>
 
       {/* Engine picker -- live status cards, not a plain dropdown */}
-      <div className="inject-field" style={{ marginBottom: 14 }}>
-        <span>Engine</span>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+      <div className="injector-section">
+        <span className="injector-section__label">Engine</span>
+        <div className="engine-pick-row">
           {engines.length === 0 && (
-            <div className="model-sub">Waiting for live fleet status…</div>
+            <div className="injector__waiting">Waiting for live fleet status…</div>
           )}
           {engines.map(e => {
             const selected = e.equipment_id === equipmentId;
-            const color = SEV_COLOR[e.severity] || '#94a3b8';
+            const color = SEV_COLOR[e.severity] || '#9aa2ae';
             return (
               <button
                 key={e.equipment_id}
                 onClick={() => setEquipmentId(e.equipment_id)}
-                className="back-btn"
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
-                  padding: '8px 12px', minWidth: 120,
-                  border: selected ? `2px solid ${color}` : '1px solid #334155',
-                  background: selected ? 'rgba(96,165,250,0.10)' : 'transparent',
-                }}
+                className={`engine-pick${selected ? ' engine-pick--selected' : ''}`}
+                style={selected ? { borderColor: color } : undefined}
               >
-                <span style={{ fontWeight: 600 }}>{e.name || e.equipment_id}</span>
-                <span className="sev-badge" style={{ backgroundColor: color, fontSize: 11 }}>{e.severity}</span>
+                <span className="engine-pick__name">{e.name || e.equipment_id}</span>
+                <span className="sev-badge" style={{ backgroundColor: color }}>{e.severity}</span>
               </button>
             );
           })}
@@ -174,16 +165,18 @@ export default function AnomalyInjector() {
       </div>
 
       {/* Fault presets -- fill in real computed values, still editable below */}
-      <div className="inject-field" style={{ marginBottom: 14 }}>
-        <span>Quick-fill a realistic fault ({PRESET_SIGMA}σ from real mean, then editable)</span>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+      <div className="injector-section">
+        <span className="injector-section__label">
+          Quick-fill a realistic fault <span className="injector-section__hint">({PRESET_SIGMA}σ from real mean, then editable)</span>
+        </span>
+        <div className="injector-preset-row">
           {PRESETS.map(p => (
-            <button key={p.key} className="back-btn" onClick={() => applyPreset(p)} disabled={sensorInfo.length === 0}>
+            <button key={p.key} className="btn-util" onClick={() => applyPreset(p)} disabled={sensorInfo.length === 0}>
               {p.label}
             </button>
           ))}
           {Object.keys(values).length > 0 && (
-            <button className="back-btn" onClick={() => setValues({})}>Clear all</button>
+            <button className="btn-util btn-util--muted" onClick={() => setValues({})}>Clear all</button>
           )}
         </div>
       </div>
@@ -191,31 +184,23 @@ export default function AnomalyInjector() {
       {/* Per-sensor value inputs, with real typical-range guidance */}
       {infoError && <div className="empty-state">Sensor info unavailable — is the backend running?</div>}
       {!infoError && (
-        <div className="inject-field">
-          <span>Sensor values to set</span>
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 8, marginTop: 6,
-          }}>
+        <div className="injector-section">
+          <span className="injector-section__label">Sensor values to set</span>
+          <div className="sensor-card-grid">
             {sensorInfo.map(s => {
               const checked = s.key in values;
               const comp = getComponentInfo(s.key);
               return (
-                <div key={s.key} style={{
-                  display: 'flex', flexDirection: 'column', gap: 4,
-                  padding: '8px 10px', borderRadius: 6,
-                  border: '1px solid #334155',
-                  background: checked ? 'rgba(96,165,250,0.08)' : 'transparent',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div key={s.key} className={`sensor-card${checked ? ' sensor-card--active' : ''}`}>
+                  <div className="sensor-card__row">
                     <input type="checkbox" checked={checked} onChange={() => toggleSensor(s.key)} />
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{s.label}</span>
-                    <span style={{ fontSize: 11, color: '#64748b' }}>{s.unit}</span>
+                    <span className="sensor-card__label">{s.label}</span>
+                    <span className="sensor-card__unit">{s.unit}</span>
                   </div>
                   {comp && (
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{comp.component}</div>
+                    <div className="sensor-card__component">{comp.component}</div>
                   )}
-                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                  <div className="sensor-card__range">
                     typical {s.min}–{s.max} (avg {s.mean})
                   </div>
                   {checked && (
@@ -224,7 +209,7 @@ export default function AnomalyInjector() {
                       step="any"
                       value={values[s.key]}
                       onChange={e => setSensorValue(s.key, e.target.value)}
-                      style={{ fontSize: 13, padding: '4px 6px' }}
+                      className="sensor-card__input"
                       placeholder={`e.g. ${s.mean}`}
                     />
                   )}
@@ -235,15 +220,12 @@ export default function AnomalyInjector() {
         </div>
       )}
 
-      <button className="back-btn" onClick={handleInject} disabled={loading} style={{ marginTop: 14 }}>
+      <button className="btn-inject" onClick={handleInject} disabled={loading}>
         {loading ? 'Injecting…' : 'Inject Values'}
       </button>
 
       {status && (
-        <div className="model-card__note" style={{
-          marginTop: 12,
-          color: status.ok ? '#22c55e' : '#ef4444',
-        }}>
+        <div className={`injector-status${status.ok ? ' injector-status--ok' : ' injector-status--error'}`}>
           {status.message}
         </div>
       )}

@@ -15,18 +15,27 @@
 //  3. truck.model reference removed -- simulatorService.js no longer
 //     assigns engine "models" (Komatsu/Cat naming was dropped in favor
 //     of generic Engine 1/2/3).
+//  4. STYLE PASS: SEV_COLOR's bright #22c55e/#ef4444 swapped for the
+//     same muted green/red used everywhere else in the app. The sensor
+//     chart tooltip was still the leftover dark-theme style (#1e293b
+//     background) from before the light-theme pass -- fixed. The six
+//     sensor line colors were saturated Tailwind-400 accents that read
+//     "neon" next to the rest of the muted palette -- replaced with a
+//     desaturated set. Misc inline grays (#94a3b8, #f97316) swapped for
+//     the app's --text3 / --copper variables so they track future
+//     palette tweaks automatically instead of drifting out of sync.
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { getComponentInfo } from '../utils/engineComponents';
 
-const SEV_COLOR = { NORMAL: '#22c55e', ANOMALY: '#ef4444' };
+const SEV_COLOR = { NORMAL: '#5f8f72', ANOMALY: '#b3564c' };
 
 const SENSOR_KEYS = [
-  { key: 'Temperature_C',   label: 'Temperature',    unit: '°C',   color: '#f87171', warn: 100 },
-  { key: 'RPM',             label: 'Engine RPM',     unit: 'rpm',  color: '#60a5fa', warn: 3800 },
-  { key: 'Fuel_Efficiency', label: 'Fuel Efficiency', unit: 'k/L', color: '#4ade80', warn: null },
-  { key: 'Power_Output_kW', label: 'Power Output',   unit: 'kW',   color: '#c084fc', warn: null },
-  { key: 'Vibration_X',     label: 'Vibration X',    unit: '',     color: '#fb923c', warn: 0.8  },
-  { key: 'Vibration_Y',     label: 'Vibration Y',    unit: '',     color: '#fbbf24', warn: 0.8  },
+  { key: 'Temperature_C',   label: 'Temperature',    unit: '°C',   color: '#bf7d68', warn: 100 },
+  { key: 'RPM',             label: 'Engine RPM',     unit: 'rpm',  color: '#5f84a3', warn: 3800 },
+  { key: 'Fuel_Efficiency', label: 'Fuel Efficiency', unit: 'k/L', color: '#74a382', warn: null },
+  { key: 'Power_Output_kW', label: 'Power Output',   unit: 'kW',   color: '#8f7fa8', warn: null },
+  { key: 'Vibration_X',     label: 'Vibration X',    unit: '',     color: '#b87333', warn: 0.8  },
+  { key: 'Vibration_Y',     label: 'Vibration Y',    unit: '',     color: '#b99b52', warn: 0.8  },
 ];
 
 function SensorChart({ data, sensor }) {
@@ -43,13 +52,13 @@ function SensorChart({ data, sensor }) {
       <ResponsiveContainer width="100%" height={100}>
         <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
           <XAxis dataKey="i" hide />
-          <YAxis domain={[mn, mx]} tick={{ fontSize: 9, fill: '#64748b' }} width={40} />
+          <YAxis domain={[mn, mx]} tick={{ fontSize: 9, fill: 'var(--text3)' }} width={40} />
           <Tooltip
-            contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 11 }}
+            contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: 'var(--text)' }}
             formatter={v => [`${v.toFixed(2)} ${sensor.unit}`, sensor.label]}
             labelFormatter={() => ''}
           />
-          {sensor.warn && <ReferenceLine y={sensor.warn} stroke="#ef4444" strokeDasharray="3 3" />}
+          {sensor.warn && <ReferenceLine y={sensor.warn} stroke="#b3564c" strokeDasharray="3 3" />}
           <Line type="monotone" dataKey="val" stroke={sensor.color}
             dot={false} strokeWidth={1.5} isAnimationActive={false} />
         </LineChart>
@@ -61,7 +70,7 @@ function SensorChart({ data, sensor }) {
 export default function TruckDetail({ truckId, fleet, prediction, sensorHistory, onBack }) {
   const truck = fleet.find(t => t.equipment_id === truckId) || {};
   const sev   = truck.severity || 'NORMAL';
-  const color = SEV_COLOR[sev] || '#94a3b8'; // unrecognized severity -> neutral gray, never green
+  const color = SEV_COLOR[sev] || 'var(--text3)'; // unrecognized severity -> neutral gray, never green
 
   return (
     <div className="truck-detail">
@@ -86,7 +95,7 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
 
         <div className="detail-stat">
           <div className="detail-stat__label">Readings Processed</div>
-          <div className="detail-stat__val" style={{ color: '#94a3b8' }}>
+          <div className="detail-stat__val" style={{ color: 'var(--text3)' }}>
             {truck.reading_count || 0}
           </div>
         </div>
@@ -110,12 +119,12 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
               <div key={i} className="feature-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="feature-row__name">{f.split(':')[0]}</span>
-                  <span className="feature-row__val" style={{ color: '#f97316' }}>
+                  <span className="feature-row__val" style={{ color: 'var(--copper)' }}>
                     {f.split(':')[1]}
                   </span>
                 </div>
                 {comp && (
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>
                     Likely part: <strong>{comp.component}</strong> ({comp.detail})
                   </div>
                 )}

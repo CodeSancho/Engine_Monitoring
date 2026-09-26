@@ -18,6 +18,19 @@
 //     sample CMAPSS engine window to Flask's /predict_rul_demo.
 //     NOTE: fetchRulDemo() is assumed but not yet confirmed against
 //     your real services/api.js -- verify the import/signature matches.
+//  4. STYLE PASS 1: removed the "Decision Engine — Severity Thresholds"
+//     table at the bottom -- it duplicated the same NORMAL/ANOMALY key
+//     already shown elsewhere. Swapped hardcoded bright green/red/blue
+//     metric colors for the app's muted CSS variables.
+//  5. STYLE PASS 2: the CMAPSS unit selector, the lifespan position
+//     bar, and the recharts tooltip were still using leftover
+//     dark-theme inline styles (#334155 track, #1e293b tooltip) that
+//     never matched the light theme -- moved onto proper CSS classes.
+//     The "Run Live RUL Demo" button was reusing "back-btn" (meant for
+//     the truck-detail back arrow) -- given its own class (.btn-inject)
+//     instead.
+//  6. STYLE PASS 3: removed the 🎲 random-unit button entirely per
+//     request, along with its now-unused pickRandomUnit handler.
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { fetchModelInfo, fetchRulDemo, fetchRulDemoUnits } from '../services/api';
@@ -94,17 +107,6 @@ export default function ModelInfo() {
     : null;
   const selectedMeta = availableUnits.find(u => u.unit === selectedUnit) || { unit: selectedUnit, totalCycles: null };
 
-  const pickRandomUnit = () => {
-    if (rulPlaying || availableUnits.length === 0) return;
-    const others = availableUnits.filter(u => u.unit !== selectedUnit);
-    const pool = others.length > 0 ? others : availableUnits;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    setSelectedUnit(pick.unit);
-    setRulHistory([]);
-    setRulDone(false);
-    setRulError(false);
-  };
-
   if (infoError) {
     return <div className="model-info"><div className="empty-state">Model info unavailable — is the backend running?</div></div>;
   }
@@ -131,8 +133,8 @@ export default function ModelInfo() {
             <div className="model-card__dataset">ziya07 Engine Failure Dataset</div>
           </div>
           <div className="model-card__body">
-            <MetricRow label="F1 Score"      val={fmt(IF_RESULTS.f1_score)}      color="#22c55e" />
-            <MetricRow label="Contamination" val={fmt(IF_RESULTS.contamination)} color="#60a5fa" />
+            <MetricRow label="F1 Score"      val={fmt(IF_RESULTS.f1_score)}      color="var(--green)" />
+            <MetricRow label="Contamination" val={fmt(IF_RESULTS.contamination)} color="var(--sky)" />
           </div>
           <div className="model-card__note">
             Trained exclusively on <b>normal</b> engine readings, evaluated against
@@ -149,8 +151,8 @@ export default function ModelInfo() {
             <div className="model-card__dataset">NASA CMAPSS FD001 (100 engines, run-to-failure)</div>
           </div>
           <div className="model-card__body">
-            <MetricRow label="Test MAE"  val={RUL_RESULTS.test_mae_cycles != null ? `${RUL_RESULTS.test_mae_cycles} cycles` : '—'}  color="#22c55e" />
-            <MetricRow label="Test RMSE" val={RUL_RESULTS.test_rmse_cycles != null ? `${RUL_RESULTS.test_rmse_cycles} cycles` : '—'} color="#60a5fa" />
+            <MetricRow label="Test MAE"  val={RUL_RESULTS.test_mae_cycles != null ? `${RUL_RESULTS.test_mae_cycles} cycles` : '—'}  color="var(--green)" />
+            <MetricRow label="Test RMSE" val={RUL_RESULTS.test_rmse_cycles != null ? `${RUL_RESULTS.test_rmse_cycles} cycles` : '—'} color="var(--sky)" />
           </div>
           <div className="model-card__note">
             Validated only on NASA CMAPSS turbofan data — not applicable to live
@@ -173,28 +175,23 @@ export default function ModelInfo() {
 
         <label className="inject-field" style={{ marginBottom: 6, maxWidth: 280 }}>
           <span>CMAPSS engine unit ({availableUnits.length} real engines available)</span>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <select
-              value={selectedUnit}
-              disabled={rulPlaying}
-              style={{ flex: 1 }}
-              onChange={e => {
-                setSelectedUnit(parseInt(e.target.value, 10));
-                setRulHistory([]);
-                setRulDone(false);
-                setRulError(false);
-              }}
-            >
-              {availableUnits.map(u => (
-                <option key={u.unit} value={u.unit}>
-                  Unit {u.unit}{u.totalCycles != null ? ` — ${u.totalCycles} real cycles` : ''}
-                </option>
-              ))}
-            </select>
-            <button className="back-btn" onClick={pickRandomUnit} disabled={rulPlaying} title="Pick a random real engine unit">
-              🎲
-            </button>
-          </div>
+          <select
+            value={selectedUnit}
+            disabled={rulPlaying}
+            style={{ width: '100%' }}
+            onChange={e => {
+              setSelectedUnit(parseInt(e.target.value, 10));
+              setRulHistory([]);
+              setRulDone(false);
+              setRulError(false);
+            }}
+          >
+            {availableUnits.map(u => (
+              <option key={u.unit} value={u.unit}>
+                Unit {u.unit}{u.totalCycles != null ? ` — ${u.totalCycles} real cycles` : ''}
+              </option>
+            ))}
+          </select>
         </label>
 
         {/* Where this unit's real lifespan falls among the other real
@@ -202,23 +199,21 @@ export default function ModelInfo() {
             list, not a new inference. */}
         {cycleRange && selectedMeta.totalCycles != null && (
           <div style={{ marginBottom: 12, maxWidth: 280 }}>
-            <div style={{
-              position: 'relative', height: 6, borderRadius: 3,
-              background: '#334155', marginTop: 4,
-            }}>
-              <div style={{
-                position: 'absolute', top: -3, height: 12, width: 2,
-                background: '#B87333',
-                left: `${((selectedMeta.totalCycles - cycleRange.min) / Math.max(1, cycleRange.max - cycleRange.min)) * 100}%`,
-              }} />
+            <div className="rul-lifespan-track">
+              <div
+                className="rul-lifespan-marker"
+                style={{
+                  left: `${((selectedMeta.totalCycles - cycleRange.min) / Math.max(1, cycleRange.max - cycleRange.min)) * 100}%`,
+                }}
+              />
             </div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+            <div className="rul-lifespan-caption">
               {selectedMeta.totalCycles} cycles — real range across {availableUnits.length} engines: {cycleRange.min}–{cycleRange.max}
             </div>
           </div>
         )}
 
-        <button className="back-btn" onClick={startRulDemo} disabled={rulPlaying}>
+        <button className="btn-inject" onClick={startRulDemo} disabled={rulPlaying}>
           {rulPlaying ? 'Running…' : rulHistory.length > 0 ? 'Replay' : `Run Live RUL Demo (Unit ${selectedUnit})`}
         </button>
         {rulError && <div className="empty-state" style={{ marginTop: 8 }}>Demo request failed — is the backend/Flask service running?</div>}
@@ -231,7 +226,7 @@ export default function ModelInfo() {
                   label={{ value: 'Engine cycle', position: 'insideBottom', offset: -2, fontSize: 10, fill: '#64748b' }} />
                 <YAxis domain={[0, 130]} tick={{ fontSize: 10, fill: '#64748b' }} width={35} />
                 <Tooltip
-                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 11 }}
+                  contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: '#111827' }}
                   formatter={v => [`${v.toFixed(1)} cycles`, 'Predicted RUL']}
                   labelFormatter={c => `Cycle ${c}`}
                 />
@@ -247,23 +242,6 @@ export default function ModelInfo() {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Decision engine */}
-      <div className="decision-engine">
-        <div className="detail-section-title">Decision Engine — Severity Thresholds</div>
-        <div className="sev-table">
-          {[
-            ['NORMAL',  '#22c55e', `Anomaly score < ${fmt(info.anomaly_threshold ?? 0.45)}`, 'Continue operation'],
-            ['ANOMALY', '#ef4444', `Anomaly score ≥ ${fmt(info.anomaly_threshold ?? 0.45)}`, 'Flag for inspection'],
-          ].map(([sev, col, cond, action]) => (
-            <div key={sev} className="sev-row" style={{ borderLeftColor: col }}>
-              <span className="sev-badge" style={{ backgroundColor: col }}>{sev}</span>
-              <span className="sev-cond">{cond}</span>
-              <span className="sev-action">{action}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

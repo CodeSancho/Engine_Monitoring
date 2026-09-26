@@ -12,36 +12,41 @@
   --bg4: #e2e8f0;
 
   /* ---------- Text ---------- */
-  --text: #111827;
-  --text2: #475569;
-  --text3: #64748b;
+  --text: #2b3138;
+  --text2: #565f6b;
+  --text3: #7a828d;
 
   /* ---------- Accent colours ---------- */
   --sky: #2e86ab;
   --sky-light: #7ec8e3;
   --copper: #b87333;
 
-  /* ---------- Status colours ---------- */
+  /* ---------- Status colours (muted -- no saturated red/green anywhere) ---------- */
   --green: #5f8f72;
   --green-dark: #527c63;
   --green-light: #eef5f0;
 
+  --red: #b3564c;
+  --red-dark: #984940;
+  --red-light: #f6ece9;
+
   --amber: #d97706;
   --orange: #ea580c;
-  --red: #dc2626;
 
-  /* ---------- Borders ---------- */
+  /* ---------- Borders / dividers (replacing "card" chrome) ---------- */
   --border: #e2e8f0;
-  --radius: 8px;
+  --divider: #e5e9ef;
+  --radius: 8px;      /* still used for small chips/inputs, not containers */
+  --radius-sm: 4px;
 
-  /* ---------- Cards ---------- */
+  /* ---------- Cards (kept for text-color vars; box chrome removed) ---------- */
   --card-bg: #f8fafc;
   --card-bg-alt: #ffffff;
   --card-border: #d9e0e7;
 
-  --card-text: #111827;
-  --card-text2: #475569;
-  --card-text3: #64748b;
+  --card-text: #2b3138;
+  --card-text2: #565f6b;
+  --card-text3: #7a828d;
 }
 
 
@@ -92,7 +97,7 @@ button {
   height: 60px;
 
   background: #ffffff;
-  border-bottom: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--divider);
 
   position: sticky;
   top: 0;
@@ -217,7 +222,7 @@ button {
 }
 
 .conn-badge--off {
-  background: #fef2f2;
+  background: var(--red-light);
   color: var(--red);
 }
 
@@ -285,28 +290,27 @@ button {
 
 
 /* =========================================================
-   FLEET SUMMARY
+   FLEET SUMMARY -- flat strip, no card box, just dividers
    ========================================================= */
 
 .fleet-summary {
   display: flex;
-  gap: 2px;
+  gap: 0;
 
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
 
-  background: #ffffff;
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius);
-
-  padding: 12px 20px;
-
-  box-shadow:
-    0 1px 3px rgba(15, 23, 42, 0.04);
+  border-bottom: 1px solid var(--divider);
 }
 
 .fleet-summary__item {
   flex: 1;
   text-align: center;
+  border-right: 1px solid var(--divider);
+}
+
+.fleet-summary__item:last-child {
+  border-right: none;
 }
 
 .fleet-summary__count {
@@ -325,7 +329,7 @@ button {
 
 
 /* =========================================================
-   TRUCK CARDS
+   TRUCK CARDS -- flattened to list rows on the page background
    ========================================================= */
 
 .truck-grid {
@@ -334,32 +338,24 @@ button {
   grid-template-columns:
     repeat(auto-fill, minmax(300px, 1fr));
 
-  gap: 16px;
+  gap: 20px 32px;
 }
 
 .truck-card {
-  background: #ffffff;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
 
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius);
-
-  padding: 16px;
+  padding: 0 0 18px;
 
   cursor: pointer;
 
-  transition:
-    transform 0.15s,
-    box-shadow 0.15s,
-    border-color 0.15s;
+  transition: opacity 0.15s;
 }
 
 .truck-card:hover {
-  transform: translateY(-2px);
-
-  box-shadow:
-    0 8px 24px rgba(15, 23, 42, 0.08);
-
-  border-color: var(--sky);
+  opacity: 0.82;
 }
 
 .truck-card__header {
@@ -444,22 +440,30 @@ button {
   display: flex;
   flex-wrap: wrap;
 
-  gap: 6px;
+  gap: 14px;
 
   margin: 10px 0;
 }
 
 .sensor-pill {
-  background: var(--bg3);
-
-  border-radius: 4px;
-
-  padding: 3px 8px;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
 
   display: flex;
+  align-items: center;
   gap: 6px;
 
   font-size: 11px;
+}
+
+.sensor-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
 }
 
 .sensor-pill__label {
@@ -476,10 +480,6 @@ button {
   color: var(--card-text2);
 
   margin-top: 8px;
-
-  border-top: 1px solid var(--card-border);
-
-  padding-top: 8px;
 }
 
 .truck-card__count {
@@ -510,28 +510,27 @@ button {
 }
 
 .back-btn {
-  background: var(--bg3);
+  background: transparent;
   color: var(--text2);
 
-  padding: 6px 14px;
+  padding: 4px 0;
 
-  border-radius: 6px;
+  border-radius: 0;
 
   font-size: 13px;
+  font-weight: 600;
 
-  transition:
-    background 0.2s,
-    color 0.2s;
+  transition: color 0.15s;
 }
 
 .back-btn:hover {
-  background: var(--bg4);
+  background: transparent;
   color: var(--text);
 }
 
 
 /* =========================================================
-   DETAIL STATS
+   DETAIL STATS -- flattened, divider instead of box
    ========================================================= */
 
 .detail-stats {
@@ -541,15 +540,10 @@ button {
 
   gap: 16px;
 
-  background: #ffffff;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
 
-  border: 1px solid var(--card-border);
-
-  border-radius: var(--radius);
-
-  padding: 20px;
-
-  margin-bottom: 16px;
+  border-bottom: 1px solid var(--divider);
 }
 
 .detail-stat__label {
@@ -624,18 +618,16 @@ button {
 }
 
 
-/* ---------- Detail message ---------- */
+/* ---------- Detail message -- kept as a callout, not a "card";
+   the colored left border IS the content (severity), so it stays ---------- */
 
 .detail-message {
-  background: #ffffff;
-
-  border: 1px solid var(--card-border);
-
+  background: transparent;
+  border: none;
   border-left: 3px solid;
+  border-radius: 0;
 
-  border-radius: 4px;
-
-  padding: 10px 14px;
+  padding: 4px 0 4px 14px;
 
   font-size: 13px;
 
@@ -645,18 +637,13 @@ button {
 }
 
 
-/* ---------- Detail features ---------- */
+/* ---------- Detail features -- flattened ---------- */
 
 .detail-features {
-  background: #ffffff;
-
-  border: 1px solid var(--card-border);
-
-  border-radius: var(--radius);
-
-  padding: 14px;
-
+  padding-bottom: 16px;
   margin-bottom: 16px;
+
+  border-bottom: 1px solid var(--divider);
 }
 
 .feature-row {
@@ -693,7 +680,7 @@ button {
 
 
 /* =========================================================
-   SENSOR CHARTS
+   SENSOR CHARTS -- flattened
    ========================================================= */
 
 .sensor-grid {
@@ -702,17 +689,11 @@ button {
   grid-template-columns:
     repeat(auto-fill, minmax(280px, 1fr));
 
-  gap: 12px;
+  gap: 20px;
 }
 
 .sensor-chart {
-  background: #ffffff;
-
-  border: 1px solid var(--card-border);
-
-  border-radius: var(--radius);
-
-  padding: 12px;
+  padding: 0;
 }
 
 .sensor-chart__title {
@@ -733,7 +714,8 @@ button {
 
 
 /* =========================================================
-   ALERT CARDS
+   ALERT CARDS -- flattened rows; the colored left border is the
+   severity signal, not decorative card chrome, so it stays.
    ========================================================= */
 
 .alert-panel__header {
@@ -763,20 +745,16 @@ button {
 }
 
 .alert-card {
-  background: #ffffff;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
 
-  border: 1px solid var(--card-border);
+  padding: 0 0 16px;
+  border-left: 3px solid;
+  padding-left: 14px;
 
-  border-radius: var(--radius);
-
-  padding: 14px;
-
-  border-left: 4px solid;
-
-  margin-bottom: 12px;
-
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.03);
+  margin-bottom: 16px;
 }
 
 .alert-card__header {
@@ -871,25 +849,25 @@ button {
 /* ---------- Secondary button ---------- */
 
 .btn-secondary {
-  background: var(--bg3);
+  background: transparent;
 
   color: var(--sky);
 
-  padding: 5px 12px;
+  padding: 4px 0;
 
-  border-radius: 4px;
+  border-radius: 0;
 
   font-size: 12px;
+  font-weight: 600;
 
-  transition:
-    background 0.2s,
-    color 0.2s;
+  transition: color 0.15s;
 }
 
 .btn-secondary:hover {
-  background: var(--bg4);
+  background: transparent;
 
   color: var(--text);
+  text-decoration: underline;
 }
 
 
@@ -921,7 +899,9 @@ button {
 
 
 /* =========================================================
-   MODEL CARDS
+   MODEL CARDS -- flattened; header keeps its colored bottom
+   rule (set inline per-model via style={{borderColor}}) since
+   that accent line IS meaningful signal, not card decoration.
    ========================================================= */
 
 .model-sub {
@@ -937,27 +917,26 @@ button {
 
   grid-template-columns: 1fr 1fr;
 
-  gap: 16px;
+  gap: 32px;
 
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 
 .model-card {
-  background: #ffffff;
-
-  border: 1px solid var(--card-border);
-
-  border-radius: var(--radius);
-
-  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
 }
 
 .model-card__header {
-  padding: 14px 16px;
+  padding: 0 0 12px;
 
-  border-bottom: 1px solid var(--card-border);
+  border-bottom: 2px solid var(--card-border);
 
-  background: var(--bg2);
+  background: transparent;
+
+  margin-bottom: 12px;
 }
 
 .model-card__title {
@@ -987,21 +966,23 @@ button {
 }
 
 .model-card__body {
-  padding: 14px 16px;
+  padding: 0;
 
-  background: #ffffff;
+  background: transparent;
 }
 
 .model-card__note {
-  padding: 10px 16px;
+  padding: 10px 0 0;
 
-  background: var(--bg2);
+  background: transparent;
 
   font-size: 11px;
+  font-style: italic;
 
   color: var(--card-text2);
 
-  border-top: 1px solid var(--card-border);
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
 }
 
 
@@ -1022,7 +1003,7 @@ button {
 }
 
 .metric-row--highlight {
-  background: rgba(95, 143, 114, 0.10);
+  background: rgba(95, 143, 114, 0.08);
 
   border-radius: 4px;
 
@@ -1055,19 +1036,14 @@ button {
 
 
 /* =========================================================
-   FEATURE IMPORTANCE
+   FEATURE IMPORTANCE -- flattened
    ========================================================= */
 
 .feature-importance {
-  background: #ffffff;
+  padding-bottom: 20px;
+  margin-bottom: 24px;
 
-  border: 1px solid var(--card-border);
-
-  border-radius: var(--radius);
-
-  padding: 16px;
-
-  margin-bottom: 20px;
+  border-bottom: 1px solid var(--divider);
 }
 
 .feat-list {
@@ -1140,17 +1116,12 @@ button {
 
 
 /* =========================================================
-   DECISION ENGINE
+   DECISION ENGINE -- flattened (kept in case another panel
+   still renders this table; ModelInfo no longer does)
    ========================================================= */
 
 .decision-engine {
-  background: #ffffff;
-
-  border: 1px solid var(--card-border);
-
-  border-radius: var(--radius);
-
-  padding: 16px;
+  padding-bottom: 4px;
 }
 
 .sev-table {
@@ -1168,13 +1139,14 @@ button {
 
   gap: 12px;
 
-  padding: 8px 12px;
+  padding: 8px 0;
 
-  background: var(--bg2);
+  background: transparent;
 
-  border-radius: 4px;
+  border-radius: 0;
 
   border-left: 3px solid;
+  padding-left: 12px;
 }
 
 .sev-cond {
@@ -1206,57 +1178,332 @@ button {
    ANOMALY INJECTOR
    ========================================================= */
 
-/*
-  Uses the same muted green as Fleet Overview.
-*/
-
-.anomaly-injector__button,
-.anomaly-injector button {
-  background: var(--green);
-
-  color: #ffffff;
-
-  transition:
-    background 0.2s,
-    opacity 0.2s;
+.injector {
+  padding-bottom: 4px;
 }
 
-.anomaly-injector__button:hover,
-.anomaly-injector button:hover {
-  background: var(--green-dark);
+.injector__header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
 
-  opacity: 0.95;
+.injector__tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
+.injector__intro {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.6;
+  margin-bottom: 18px;
+  max-width: 640px;
+}
+
+.injector__waiting {
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.injector-section {
+  margin-bottom: 20px;
+}
+
+.injector-section__label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+
+.injector-section__hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text3);
+}
+
+/* Engine picker -- flat list, no card box. Selection shown with an
+   underline + accent color, not a bordered/shadowed box. */
+.engine-pick-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.engine-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 0 0 6px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.engine-pick:hover {
+  border-bottom-color: var(--border);
+}
+
+.engine-pick--selected {
+  border-bottom-width: 2px;
+}
+
+.engine-pick__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Utility buttons -- flat text controls, no bordered box. Distinct
+   from the filled primary action. */
+.btn-util {
+  background: transparent;
+  color: var(--text2);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.btn-util:hover:not(:disabled) {
+  border-color: var(--text3);
+  color: var(--text);
+}
+
+.btn-util:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-util--muted {
+  color: var(--text3);
+}
+
+.injector-preset-row {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+/* Sensor value rows -- flat list, no card box. Active state shown
+   with a left accent rule, not a filled/bordered box. */
+.sensor-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 24px;
+}
+
+.sensor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 0 10px 12px;
+  border-bottom: 1px solid var(--divider);
+  border-left: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.sensor-card--active {
+  border-left-color: var(--sky);
+}
+
+.sensor-card__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sensor-card__row input[type="checkbox"] {
+  accent-color: var(--sky);
+}
+
+.sensor-card__label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sensor-card__unit {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.sensor-card__component {
+  font-size: 11px;
+  color: var(--text3);
+  font-style: italic;
+}
+
+.sensor-card__range {
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.sensor-card__input {
+  font-size: 13px;
+  padding: 6px 8px;
+  margin-top: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--text);
+  max-width: 180px;
+}
+
+.sensor-card__input:focus {
+  outline: none;
+  border-color: var(--sky);
+}
+
+/* Primary action -- solid, rectangular. The one deliberately "boxed"
+   element in the injector, because a primary submit button should
+   read as a button, not a link. */
+.btn-inject {
+  margin-top: 8px;
+  background: var(--text);
+  color: #ffffff;
+  padding: 9px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  transition: background 0.15s;
+}
+
+.btn-inject:hover:not(:disabled) {
+  background: #1c2026;
+}
+
+.btn-inject:disabled {
+  background: var(--text3);
+  cursor: not-allowed;
+}
+
+.injector-status {
+  margin-top: 14px;
+  padding: 8px 0 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  border-left: 3px solid;
+}
+
+.injector-status--ok {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.injector-status--error {
+  border-color: var(--red);
+  color: var(--red-dark);
 }
 
 
 /* =========================================================
-   ENGINE SENSOR CARD
+   RUL DEMO PANEL (ModelInfo.jsx) -- CMAPSS unit selector,
+   lifespan position bar, and the recharts tooltip, all
+   restyled off the leftover dark-theme inline colors onto the
+   light theme + the flat "no card" system above.
+   ========================================================= */
+
+.rul-demo-panel {
+  padding-bottom: 4px;
+}
+
+.inject-field {
+  display: block;
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+
+.inject-field > span {
+  display: block;
+  font-weight: 700;
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+
+.inject-field select {
+  font-size: 13px;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.inject-field select:focus {
+  outline: none;
+  border-color: var(--sky);
+}
+
+.inject-field select:disabled {
+  color: var(--text3);
+  background: var(--bg2);
+}
+
+/* Lifespan-position bar -- was a hardcoded dark-navy (#334155) track
+   with no CSS class; now a light track with a copper tick, matching
+   the rest of the theme. */
+.rul-lifespan-track {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg4);
+  margin-top: 6px;
+}
+
+.rul-lifespan-marker {
+  position: absolute;
+  top: -4px;
+  height: 12px;
+  width: 2px;
+  background: var(--copper);
+}
+
+.rul-lifespan-caption {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 4px;
+}
+
+
+/* =========================================================
+   ENGINE SENSOR CARD -- outer wrapper flattened; the photo
+   frame itself keeps its own rounding, since that's an image
+   treatment, not card chrome.
    ========================================================= */
 
 .engine-card {
-  background: #ffffff;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
 
-  border: 1px solid var(--card-border);
-
-  border-radius: 8px;
-
-  padding: 14px 16px 12px;
+  padding: 0 0 18px;
 
   cursor: pointer;
 
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s,
-    transform 0.15s;
+  transition: opacity 0.15s;
 }
 
 .engine-card:hover {
-  border-color: var(--sky);
-
-  transform: translateY(-1px);
-
-  box-shadow:
-    0 6px 18px rgba(15, 23, 42, 0.07);
+  opacity: 0.85;
 }
 
 .engine-card__header {
@@ -1284,7 +1531,7 @@ button {
 }
 
 
-/* ---------- Engine image ---------- */
+/* ---------- Engine image (kept rounded -- it's a photo frame) ---------- */
 
 .engine-card__art {
   position: relative;
@@ -1356,7 +1603,7 @@ button {
 .engine-card__label-name {
   font-size: 9.5px;
 
-  color: #475569;
+  color: var(--card-text2);
 
   line-height: 1.2;
 }
@@ -1366,7 +1613,7 @@ button {
 
   font-weight: 700;
 
-  color: #111827;
+  color: var(--card-text);
 
   font-family: 'IBM Plex Mono', monospace;
 }
@@ -1387,7 +1634,7 @@ button {
 
   background: rgba(255, 255, 255, 0.82);
 
-  color: #475569;
+  color: var(--card-text2);
 
   font-size: 11px;
 }
@@ -1421,7 +1668,8 @@ button {
 
 
 /* =========================================================
-   GLOBAL WHITE SURFACE OVERRIDES
+   GLOBAL TEXT-COLOR NORMALIZATION
+   (chrome removed above; keep text legible on the plain bg)
    ========================================================= */
 
 .detail-stats,

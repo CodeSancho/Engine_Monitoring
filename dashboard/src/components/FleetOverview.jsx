@@ -11,30 +11,15 @@
 //  3. TruckCard/SensorPill replaced with EngineSensorCard, which reads
 //     truck.feature_snapshot (the fields actually present on a fleet
 //     truck) instead of the old rul gauge + 4 flat sensor pills.
+//  4. STYLE PASS: removed the top summary strip (NORMAL / ANOMALY /
+//     TOTAL counts) per request -- the grid of engine cards below
+//     already shows each truck's own status, so the legend was a
+//     redundant extra readout.
 import EngineSensorCard from './Enginesensorcard';
 
-const SEV_COLOR = { NORMAL: '#5f9b74', ANOMALY: '#b25c53' };
-
 export default function FleetOverview({ fleet, onSelectTruck }) {
-  const counts = { NORMAL: 0, ANOMALY: 0 };
-  fleet.forEach(t => { counts[t.severity] = (counts[t.severity] || 0) + 1; });
-
   return (
     <div className="fleet-view">
-      {/* Summary strip */}
-      <div className="fleet-summary">
-        {Object.entries(counts).map(([sev, cnt]) => (
-          <div key={sev} className="fleet-summary__item">
-            <div className="fleet-summary__count" style={{ color: SEV_COLOR[sev] }}>{cnt}</div>
-            <div className="fleet-summary__label">{sev}</div>
-          </div>
-        ))}
-        <div className="fleet-summary__item">
-          <div className="fleet-summary__count" style={{ color: '#9aa2ae' }}>{fleet.length}</div>
-          <div className="fleet-summary__label">TOTAL</div>
-        </div>
-      </div>
-
       {/* Truck grid */}
       <div className="truck-grid">
         {fleet.length === 0
