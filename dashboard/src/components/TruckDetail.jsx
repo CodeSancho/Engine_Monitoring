@@ -24,7 +24,10 @@
 //     desaturated set. Misc inline grays (#94a3b8, #f97316) swapped for
 //     the app's --text3 / --copper variables so they track future
 //     palette tweaks automatically instead of drifting out of sync.
-//  5. BUG FIX: the Y-axis domain used multiplicative padding
+//  5. NEW: "Export CSV" button beside the Live Sensor Readings
+//     heading -- downloads the full sensorHistory window (all raw
+//     sensor fields) via the shared csvExport util.
+//  6. BUG FIX: the Y-axis domain used multiplicative padding
 //     (min * 0.98, max * 1.02), which only pads correctly when every
 //     value is positive. Vibration_X/Vibration_Y oscillate around
 //     zero and go negative, where that math pulls the floor toward
@@ -33,10 +36,18 @@
 //     domain to zero height. Replaced with additive padding based on
 //     the actual data range, which handles negative values and flat
 //     signals correctly.
+//  7. BUG FIX: Y-axis labels were getting their leading characters
+//     clipped (e.g. "0.599" rendering as just "599") -- the chart
+//     used a negative left margin (-20) tuned for short integer
+//     labels, which pushed the axis text partly outside the visible
+//     canvas once ticks started showing decimals. Eased the margin,
+//     widened the axis, and added a tickFormatter so labels stay
+//     short and consistent instead of depending on recharts' default
+//     precision.
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { getComponentInfo } from '../utils/engineComponents';
-
-const SEV_COLOR = { NORMAL: '#5f8f72', ANOMALY: '#b3564c' };
+import { SEV_COLOR, getSeverityColor } from '../constants/Severity';
+import { downloadCsv } from '../utils/csvExport';
 
 const SENSOR_KEYS = [
   { key: 'Temperature_C',   label: 'Temperature',    unit: '°C',   color: '#bf7d68', warn: 100 },
@@ -48,9 +59,14 @@ const SENSOR_KEYS = [
 ];
 
 function SensorChart({ data, sensor }) {
-  const vals = data.map(r => parseFloat(r[sensor.key] || 0));
-  const mn = Math.min(...vals);
-  const mx = Math.max(...vals);
+  const rawVals = data.map(r => parseFloat(r[sensor.key]));
+  // A single non-numeric reading (null, "N/A", missing field, etc.)
+  // turns into NaN, and NaN poisons Math.min/Math.max for the *entire*
+  // array -- that can blank out the whole chart, not just one point.
+  // Filter to finite values before computing the range.
+  const vals = rawVals.filter(Number.isFinite);
+  const mn = vals.length ? Math.min(...vals) : 0;
+  const mx = vals.length ? Math.max(...vals) : 1;
   // Additive padding, not multiplicative: multiplying by 0.98/1.02 only
   // pads correctly when every value is positive. Vibration_X/Vibration_Y
   // oscillate around zero and go negative, where mn * 0.98 pulls the
@@ -60,7 +76,7 @@ function SensorChart({ data, sensor }) {
   const range = mx - mn;
   const pad = range === 0 ? (Math.abs(mx) || 1) * 0.1 : range * 0.08;
   const domain = [mn - pad, mx + pad];
-  const chartData = data.map((r, i) => ({ i, val: parseFloat(r[sensor.key] || 0) }));
+  const chartData = data.map((r, i) => ({ i, val: parseFloat(r[sensor.key]) }));
 
   return (
     <div className="sensor-chart">
@@ -68,15 +84,25 @@ function SensorChart({ data, sensor }) {
         {sensor.label} <span className="sensor-chart__unit">({sensor.unit})</span>
       </div>
       <ResponsiveContainer width="100%" height={100}>
-        <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+        <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 4 }}>
           <XAxis dataKey="i" hide />
-          <YAxis domain={domain} tick={{ fontSize: 9, fill: '#7a828d' }} width={40} />
+          <YAxis
+            domain={domain}
+            tick={{ fontSize: 9, fill: '#7a828d' }}
+            width={52}
+            tickFormatter={v => {
+              const abs = Math.abs(v);
+              if (abs >= 100) return v.toFixed(0);
+              if (abs >= 10) return v.toFixed(1);
+              return v.toFixed(2);
+            }}
+          />
           <Tooltip
             contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: '#2b3138' }}
             formatter={v => [`${v.toFixed(2)} ${sensor.unit}`, sensor.label]}
             labelFormatter={() => ''}
           />
-          {sensor.warn && <ReferenceLine y={sensor.warn} stroke="#b3564c" strokeDasharray="3 3" />}
+          {sensor.warn && <ReferenceLine y={sensor.warn} stroke={SEV_COLOR.ANOMALY} strokeDasharray="3 3" />}
           <Line type="monotone" dataKey="val" stroke={sensor.color}
             dot={false} strokeWidth={1.5} isAnimationActive={false} />
         </LineChart>
@@ -88,7 +114,7 @@ function SensorChart({ data, sensor }) {
 export default function TruckDetail({ truckId, fleet, prediction, sensorHistory, onBack }) {
   const truck = fleet.find(t => t.equipment_id === truckId) || {};
   const sev   = truck.severity || 'NORMAL';
-  const color = SEV_COLOR[sev] || 'var(--text3)'; // unrecognized severity -> neutral gray, never green
+  const color = getSeverityColor(sev);
 
   return (
     <div className="truck-detail">
@@ -96,7 +122,7 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
       <div className="truck-detail__nav">
         <button className="back-btn" onClick={onBack}>← Fleet Overview</button>
         <div className="truck-detail__title">{truck.name || truckId}</div>
-        <div className="sev-badge" style={{ color }}>{sev}</div>
+        <div className="sev-badge" data-sev={sev} style={{ color }}>{sev}</div>
       </div>
 
       {/* Top stats row */}
@@ -153,8 +179,18 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
       )}
 
       {/* Live sensor charts */}
-      <div className="detail-section-title" style={{ marginTop: 20 }}>
-        Live Sensor Readings (last {sensorHistory.length} readings)
+      <div className="truck-detail__section-header" style={{ marginTop: 20 }}>
+        <div className="detail-section-title" style={{ margin: 0 }}>
+          Live Sensor Readings (last {sensorHistory.length} readings)
+        </div>
+        {sensorHistory.length > 0 && (
+          <button
+            className="btn-secondary"
+            onClick={() => downloadCsv(`${truckId}-sensor-history-${new Date().toISOString().slice(0, 10)}`, sensorHistory)}
+          >
+            Export CSV
+          </button>
+        )}
       </div>
       {sensorHistory.length > 5
         ? (

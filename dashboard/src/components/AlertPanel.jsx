@@ -22,13 +22,17 @@
 //     still using leftover dark-theme colors (#94a3b8 on a light page,
 //     and #cbd5e1 -- a *light* slate meant for dark backgrounds, nearly
 //     invisible here) -- fixed to the light-theme text tokens.
+//  5. NEW: "Export CSV" button in the header, next to the count chips
+//     -- downloads the currently-active alerts (with their sensor
+//     snapshot and top anomalous feature) via the shared csvExport
+//     util. Only shown when there are active alerts to export.
 import { acknowledgeAlert } from '../services/api';
 import { getComponentInfo } from '../utils/engineComponents';
-
-const SEV_COLOR = { NORMAL: '#5f9b74', ANOMALY: '#b25c53' };
+import { getSeverityColor } from '../constants/Severity';
+import { downloadCsv } from '../utils/csvExport';
 
 function AlertCard({ alert, onAcknowledge, onSelectTruck }) {
-  const color = SEV_COLOR[alert.severity] || 'var(--text3)'; // unrecognized severity -> neutral gray, never green
+  const color = getSeverityColor(alert.severity);
   const time  = new Date(alert.timestamp).toLocaleTimeString();
   const snap  = alert.feature_snapshot || {};
   const topFeature = alert.top_anomalous_features?.[0];
@@ -45,7 +49,7 @@ function AlertCard({ alert, onAcknowledge, onSelectTruck }) {
     <div className="alert-card" style={{ borderLeftColor: color }}>
       <div className="alert-card__header">
         <div className="alert-card__left">
-          <span className="sev-badge" style={{ color }}>{alert.severity}</span>
+          <span className="sev-badge" data-sev={alert.severity} style={{ color }}>{alert.severity}</span>
           <span className="alert-card__equip" onClick={() => onSelectTruck(alert.equipment_id)}>
             {alert.equipment_id}
           </span>
@@ -96,17 +100,41 @@ export default function AlertPanel({ alerts, onAcknowledge, onSelectTruck }) {
   const counts = {};
   active.forEach(a => { counts[a.severity] = (counts[a.severity] || 0) + 1; });
 
+  function handleExport() {
+    const rows = active.map(a => ({
+      id: a.id,
+      equipment_id: a.equipment_id,
+      severity: a.severity,
+      anomaly_score: a.anomaly_score,
+      timestamp: a.timestamp,
+      message: a.message,
+      temperature_mean: a.feature_snapshot?.temperature_mean,
+      rpm_mean: a.feature_snapshot?.rpm_mean,
+      vibration_magnitude: a.feature_snapshot?.vibration_magnitude,
+      temperature_slope: a.feature_snapshot?.temperature_slope,
+      top_anomalous_feature: a.top_anomalous_features?.[0],
+    }));
+    downloadCsv(`active-alerts-${new Date().toISOString().slice(0, 10)}`, rows);
+  }
+
   return (
     <div className="alert-panel">
       <div className="alert-panel__header">
         <h2 className="section-title">Active Alerts</h2>
-        <div className="alert-counts">
-          {Object.entries(counts).map(([sev, cnt]) => cnt > 0 && (
-            <span key={sev} className="count-chip"
-              style={{ color: SEV_COLOR[sev] || 'var(--text3)' }}>
-              {cnt} {sev}
-            </span>
-          ))}
+        <div className="alert-panel__header-right">
+          <div className="alert-counts">
+            {Object.entries(counts).map(([sev, cnt]) => cnt > 0 && (
+              <span key={sev} className="count-chip"
+                style={{ color: getSeverityColor(sev) }}>
+                {cnt} {sev}
+              </span>
+            ))}
+          </div>
+          {active.length > 0 && (
+            <button className="btn-secondary" onClick={handleExport}>
+              Export CSV
+            </button>
+          )}
         </div>
       </div>
 

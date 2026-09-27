@@ -9,8 +9,9 @@
 //  - Moved off ad-hoc dark-theme inline styles (#334155 borders, neon
 //    rgba(96,165,250,...) glows) onto the same light card system as the
 //    rest of the app (FleetOverview / EngineSensorCard).
-//  - SEV_COLOR now matches FleetOverview's muted sage/brick palette
-//    instead of saturated green/red -- one status language app-wide.
+//  - SEV_COLOR was a locally-duplicated copy of the same map now
+//    shared across TruckDetail/AlertPanel/EngineSensorCard -- moved to
+//    ../constants/severity so a future fix only has to happen once.
 //  - "back-btn" was being reused for three unrelated things (engine
 //    picker, preset chips, the primary submit action). Split into
 //    purpose-built classes: .engine-pick, .btn-util, .btn-inject.
@@ -27,9 +28,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { injectAnomaly, fetchInjectSensorInfo, fetchFleetStatus } from '../services/api';
 import { getComponentInfo } from '../utils/engineComponents';
+import { getSeverityColor } from '../constants/Severity';
 import engineCardImg from '../assets/engine-card.webp';
-
-const SEV_COLOR = { NORMAL: '#5f9b74', ANOMALY: '#b25c53' };
 
 // Preset fault bundles -- which sensors they touch and which direction
 // (+1 = push toward mean + 4σ, -1 = push toward mean - 4σ). The actual
@@ -159,7 +159,7 @@ export default function AnomalyInjector() {
           )}
           {engines.map(e => {
             const selected = e.equipment_id === equipmentId;
-            const color = SEV_COLOR[e.severity] || '#9aa2ae';
+            const color = getSeverityColor(e.severity);
             return (
               <button
                 key={e.equipment_id}
@@ -171,7 +171,7 @@ export default function AnomalyInjector() {
                 </div>
                 <div className="engine-pick__meta">
                   <span className="engine-pick__name">{e.name || e.equipment_id}</span>
-                  <span className="sev-badge" style={{ color }}>{e.severity}</span>
+                  <span className="sev-badge" data-sev={e.severity} style={{ color }}>{e.severity}</span>
                 </div>
               </button>
             );

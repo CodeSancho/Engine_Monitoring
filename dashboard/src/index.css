@@ -250,6 +250,30 @@ button {
   text-transform: uppercase;
 
   white-space: nowrap;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Shape marker so severity isn't communicated by color alone --
+   colorblind users (red/green confusion is the most common form)
+   otherwise have no way to distinguish NORMAL from ANOMALY now that
+   this is plain text with no filled box. Toggle via a data attribute
+   set alongside the color, e.g.
+   <span className="sev-badge" data-sev={sev} style={{ color }}> */
+.sev-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  background: currentColor;
+  border-radius: 50%; /* NORMAL: dot */
+}
+
+.sev-badge[data-sev="ANOMALY"]::before {
+  border-radius: 1px;
+  transform: rotate(45deg); /* ANOMALY: diamond, visually distinct from the dot */
 }
 
 .section-title {
@@ -720,6 +744,12 @@ button {
   display: flex;
 
   gap: 16px;
+}
+
+.alert-panel__header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
 .count-chip {
@@ -1763,4 +1793,14 @@ button {
    referenced but never actually defined. */
 .mono {
   font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Section heading + action button on one row (used for the "Export
+   CSV" button beside Live Sensor Readings in TruckDetail). */
+.truck-detail__section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
 }
