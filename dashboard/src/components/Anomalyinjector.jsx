@@ -30,7 +30,6 @@ export default function AnomalyInjector() {
   const [values, setValues]           = useState({});   // { Temperature_C: '140', ... } -- only checked sensors present
   const [status, setStatus]           = useState(null); // { ok, message }
   const [loading, setLoading]         = useState(false);
-  const [awaitingResult, setAwaitingResult] = useState(null);
   const pollRef = useRef(null);
   const awaitingRef = useRef(null);
 
@@ -64,7 +63,6 @@ export default function AnomalyInjector() {
           : `Alert generated for ${current.equipmentId} after evaluating ${current.fields.join(', ')}.${scoreText}`,
       });
       awaitingRef.current = null;
-      setAwaitingResult(null);
     };
     const onAlert = alert => {
       const current = awaitingRef.current;
@@ -137,6 +135,7 @@ export default function AnomalyInjector() {
 
     setLoading(true);
     setStatus(null);
+    awaitingRef.current = { equipmentId, fields: sensors.map(sensor => sensor.key) };
     injectAnomaly({ equipment_id: equipmentId, sensors })
       .then(res => {
         setStatus({
@@ -146,9 +145,9 @@ export default function AnomalyInjector() {
         });
         const pending = { equipmentId: res.equipment_id, fields: res.fields_changed };
         awaitingRef.current = pending;
-        setAwaitingResult(pending);
       })
       .catch(err => {
+        awaitingRef.current = null;
         const msg = err.response?.data?.error || err.message;
         setStatus({ ok: false, message: msg });
       })
@@ -165,6 +164,12 @@ export default function AnomalyInjector() {
         Sets exact values on a running engine's live sensor buffer. The next natural
         prediction tick will genuinely evaluate them — this does not fake an alert,
         it only sets input data honestly to whatever value you choose.
+      </p>
+      <p className="injector__intro">
+        The detector evaluates statistics across a rolling window. A sensor value
+        outside its typical range can still be classified as normal; combined or
+        sustained changes may be needed. The ranges below describe the dataset,
+        not guaranteed alert thresholds.
       </p>
 
       {/* Engine picker -- live status cards, not a plain dropdown */}
