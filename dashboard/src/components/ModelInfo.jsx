@@ -62,32 +62,42 @@ export default function ModelInfo() {
     }).catch(() => {/* keep FALLBACK_UNITS */});
   }, []);
 
-  // Steps through the engine's life 5 cycles at a time, fetching a fresh
-  // RUL prediction for each window and appending it to the chart -- this
-  // is what makes the decline visible live, rather than one static number.
+  // Sample the entire engine life at a readable interval. Every point is
+  // still a real model prediction for a 30-cycle CMAPSS window.
   useEffect(() => {
     if (!rulPlaying) return;
     let cancelled = false;
-    const STEP = 5;
+    let timer;
 
     const tick = async (start) => {
       if (cancelled) return;
       try {
         const res = await fetchRulDemo(start, selectedUnit);
         if (cancelled) return;
-        setRulHistory(prev => [...prev, { cycle: res.cycle_range[1], rul: res.rul_cycles }]);
+        const totalCycles = res.total_cycles_this_engine;
+        const cycle = res.is_final_window ? totalCycles : res.cycle_range[1];
+        const estimatedUsed = cycle;
+        setRulHistory(prev => [...prev, {
+          cycle,
+          rul: res.rul_cycles,
+          monthsRemaining: Math.max(0, res.rul_cycles / 30.44),
+          yearsRemaining: Math.max(0, res.rul_cycles / 365.25),
+          monthsUsed: estimatedUsed / 30.44,
+          yearsUsed: estimatedUsed / 365.25,
+        }]);
         if (res.is_final_window) {
           setRulPlaying(false);
           setRulDone(true);
           return;
         }
-        setTimeout(() => tick(start + STEP), 400);
+        const step = Math.max(1, Math.floor(res.total_cycles_this_engine / 24));
+        timer = setTimeout(() => tick(start + step), 80);
       } catch {
         if (!cancelled) { setRulError(true); setRulPlaying(false); }
       }
     };
     tick(0);
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [rulPlaying, selectedUnit]);
 
   const startRulDemo = () => {
@@ -218,23 +228,49 @@ export default function ModelInfo() {
         </button>
         {rulError && <div className="empty-state" style={{ marginTop: 8 }}>Demo request failed — is the backend/Flask service running?</div>}
 
-        {rulHistory.length > 1 && (
+        {rulHistory.length > 0 && (
           <div style={{ marginTop: 16 }}>
+            <div className="rul-chart-explainer">
+              <strong>How to read this chart</strong>
+              <span><b>X-axis:</b> estimated engine age from the beginning, shown in months and years. It assumes one cycle equals one operating day.</span>
+              <span><b>Y-axis:</b> estimated months. Copper shows predicted life remaining; blue shows recorded engine age increasing toward end of life.</span>
+              <span>This demo samples real CMAPSS engine windows; it has no calendar dates or observed service months. The calendar view is an estimate, not live fleet RUL.</span>
+            </div>
+            <div className="rul-lifecycle-legend">
+              <span><i className="rul-legend-swatch rul-legend-swatch--remaining" />Predicted months remaining</span>
+              <span><i className="rul-legend-swatch rul-legend-swatch--used" />Estimated months elapsed</span>
+            </div>
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={rulHistory} margin={{ top: 8, right: 16, bottom: 0, left: -10 }}>
-                <XAxis dataKey="cycle" tick={{ fontSize: 10, fill: '#64748b' }}
-                  label={{ value: 'Engine cycle', position: 'insideBottom', offset: -2, fontSize: 10, fill: '#64748b' }} />
-                <YAxis domain={[0, 130]} tick={{ fontSize: 10, fill: '#64748b' }} width={35} />
+              <LineChart data={rulHistory} margin={{ top: 8, right: 20, bottom: 18, left: 12 }}>
+                <XAxis dataKey="yearsUsed" type="number" domain={[0, (selectedMeta.totalCycles || 'dataMax') / 365.25]}
+                  tickCount={7} tick={{ fontSize: 10, fill: '#334155' }}
+                  tickFormatter={years => years < 1 ? `${Math.round(years * 12)} mo` : `${years.toFixed(1)} yr`}
+                  label={{ value: 'Estimated engine age (months / years)', position: 'insideBottom', offset: -2, fontSize: 11, fill: '#1f2937' }} />
+                <YAxis type="number" domain={[0, Math.max(1, (selectedMeta.totalCycles || 1) / 30.44)]}
+                  tick={{ fontSize: 10, fill: '#334155' }} width={48}
+                  tickFormatter={months => months >= 12 ? `${(months / 12).toFixed(1)} yr` : `${months.toFixed(0)} mo`}
+                  label={{ value: 'Estimated life remaining', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#1f2937' }} />
                 <Tooltip
                   contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: '#111827' }}
-                  formatter={v => [`${v.toFixed(1)} cycles`, 'Predicted RUL']}
-                  labelFormatter={c => `Cycle ${c}`}
+                  formatter={(v, name) => [`${Number(v).toFixed(1)} months (${(Number(v) / 12).toFixed(1)} years)`, name]}
+                  labelFormatter={years => `Estimated age: ${Number(years).toFixed(1)} years (${(Number(years) * 12).toFixed(0)} months)`}
                 />
-                <Line type="monotone" dataKey="rul" stroke="#B87333" strokeWidth={2} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="monthsRemaining" name="Predicted months remaining" stroke="#B87333" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="monthsUsed" name="Recorded months elapsed" stroke="#5f84a3" strokeWidth={2} dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
+            <div className="rul-calendar-track" aria-label="Estimated engine age from start to recorded end of life">
+              <div
+                className="rul-calendar-track__progress"
+                style={{ width: `${Math.min(100, (rulHistory[rulHistory.length - 1].cycle / Math.max(1, selectedMeta.totalCycles || rulHistory[rulHistory.length - 1].cycle)) * 100)}%` }}
+              />
+              <span className="rul-calendar-track__start">0 months</span>
+              <span className="rul-calendar-track__current">Current estimate: {(rulHistory[rulHistory.length - 1].cycle / 30.44).toFixed(1)} months</span>
+              <span className="rul-calendar-track__end">End: {((selectedMeta.totalCycles || 0) / 30.44).toFixed(1)} months ({((selectedMeta.totalCycles || 0) / 365.25).toFixed(1)} years)</span>
+            </div>
             <div className="model-card__body" style={{ marginTop: 4 }}>
-              <MetricRow label="Current predicted RUL" val={`${rulHistory[rulHistory.length-1].rul.toFixed(1)} cycles`} color="#B87333" highlight />
+              <MetricRow label="Predicted life remaining" val={`${rulHistory[rulHistory.length-1].monthsRemaining.toFixed(1)} months (${rulHistory[rulHistory.length-1].yearsRemaining.toFixed(1)} years)`} color="#B87333" highlight />
+              <MetricRow label="Estimated life used" val={`${(selectedMeta.totalCycles / 30.44 - rulHistory[rulHistory.length-1].monthsRemaining).toFixed(1)} months`} color="#5f84a3" />
               {rulDone && <div className="model-card__note" style={{ marginTop: 8 }}>
                 Reached this engine's real, recorded end of life. Predicted RUL correctly approaches
                 0 as the true failure point is reached (Model Test MAE: {RUL_RESULTS.test_mae_cycles} cycles).

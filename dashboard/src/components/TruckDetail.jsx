@@ -6,12 +6,12 @@ import { SEV_COLOR, getSeverityColor } from '../constants/Severity';
 import { downloadCsv } from '../utils/csvExport';
 
 const SENSOR_KEYS = [
-  { key: 'Temperature_C',   label: 'Temperature',    unit: '°C',   color: '#bf7d68', warn: 100 },
-  { key: 'RPM',             label: 'Engine RPM',     unit: 'rpm',  color: '#5f84a3', warn: 3800 },
-  { key: 'Fuel_Efficiency', label: 'Fuel Efficiency', unit: 'k/L', color: '#74a382', warn: null },
-  { key: 'Power_Output_kW', label: 'Power Output',   unit: 'kW',   color: '#8f7fa8', warn: null },
-  { key: 'Vibration_X',     label: 'Vibration X',    unit: '',     color: '#b87333', warn: 0.8  },
-  { key: 'Vibration_Y',     label: 'Vibration Y',    unit: '',     color: '#b99b52', warn: 0.8  },
+  { key: 'Temperature_C',   label: 'Temperature',    unit: '°C',   color: '#bf7d68', warn: 120 },
+  { key: 'RPM',             label: 'Engine RPM',     unit: 'rpm',  color: '#5f84a3', warn: 4000 },
+  { key: 'Fuel_Efficiency', label: 'Fuel Efficiency', unit: 'k/L', color: '#74a382', warn: 30 },
+  { key: 'Power_Output_kW', label: 'Power Output',   unit: 'kW',   color: '#8f7fa8', warn: 100 },
+  { key: 'Vibration_X',     label: 'Vibration X',    unit: '',     color: '#b87333', warn: 1 },
+  { key: 'Vibration_Y',     label: 'Vibration Y',    unit: '',     color: '#b99b52', warn: 1 },
 ];
 
 function SensorChart({ data, sensor }) {
@@ -30,22 +30,29 @@ function SensorChart({ data, sensor }) {
   // line instead of padding it. A flat signal (mn === mx) also
   // collapsed to a zero-height domain and could make the line vanish.
   const range = mx - mn;
-  const pad = range === 0 ? (Math.abs(mx) || 1) * 0.1 : range * 0.08;
-  const domain = [mn - pad, mx + pad];
+  const pad = range === 0 ? (Math.abs(mx) || 1) * 0.1 : range * 0.12;
+  // Keep the trace readable while including its high limit in the plot.
+  const lower = Math.max(0, mn - pad);
+  const upper = Math.max(mx + pad, sensor.warn * 1.06);
+  const domain = [lower, upper];
   const chartData = data.map((r, i) => ({ i, val: parseFloat(r[sensor.key]) }));
 
   return (
     <div className="sensor-chart">
-      <div className="sensor-chart__title" style={{ color: sensor.color }}>
-        {sensor.label} <span className="sensor-chart__unit">({sensor.unit})</span>
+      <div className="sensor-chart__header">
+        <div className="sensor-chart__title" style={{ '--sensor-color': sensor.color }}>
+          <span className="sensor-chart__dot" />
+          {sensor.label} <span className="sensor-chart__unit">{sensor.unit}</span>
+        </div>
+        <span className="sensor-chart__limit">Limit {sensor.warn}</span>
       </div>
-      <ResponsiveContainer width="100%" height={100}>
-        <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 4 }}>
+      <ResponsiveContainer width="100%" height={92}>
+        <LineChart data={chartData} margin={{ top: 5, right: 8, bottom: 1, left: 0 }}>
           <XAxis dataKey="i" hide />
           <YAxis
             domain={domain}
-            tick={{ fontSize: 9, fill: '#7a828d' }}
-            width={52}
+            tick={{ fontSize: 9, fill: '#748091' }}
+            width={sensor.key === 'RPM' ? 43 : 39}
             tickFormatter={v => {
               const abs = Math.abs(v);
               if (abs >= 100) return v.toFixed(0);
@@ -54,13 +61,19 @@ function SensorChart({ data, sensor }) {
             }}
           />
           <Tooltip
-            contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: '#2b3138' }}
-            formatter={v => [`${v.toFixed(2)} ${sensor.unit}`, sensor.label]}
-            labelFormatter={() => ''}
+            contentStyle={{ background: '#ffffff', border: '1px solid #dce3eb', borderRadius: 6, boxShadow: '0 4px 14px rgba(20, 32, 48, .12)', fontSize: 11, color: '#2b3138' }}
+            formatter={v => [`${Number(v).toFixed(sensor.key.startsWith('Vibration') ? 3 : 1)} ${sensor.unit}`, sensor.label]}
+            labelFormatter={i => `Reading ${Number(i) + 1}`}
           />
-          {sensor.warn && <ReferenceLine y={sensor.warn} stroke={SEV_COLOR.ANOMALY} strokeDasharray="3 3" />}
-          <Line type="monotone" dataKey="val" stroke={sensor.color}
-            dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <ReferenceLine
+            y={sensor.warn}
+            stroke={SEV_COLOR.ANOMALY}
+            strokeDasharray="4 3"
+            strokeWidth={1.5}
+            label={{ value: 'LIMIT', position: 'insideTopRight', fill: SEV_COLOR.ANOMALY, fontSize: 8, fontWeight: 700 }}
+          />
+          <Line type="linear" dataKey="val" stroke={sensor.color}
+            dot={false} strokeWidth={2.25} activeDot={{ r: 3.5, stroke: '#fff', strokeWidth: 1.5 }} isAnimationActive={false} connectNulls />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -137,7 +150,7 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
       {/* Live sensor charts */}
       <div className="truck-detail__section-header" style={{ marginTop: 20 }}>
         <div className="detail-section-title" style={{ margin: 0 }}>
-          Live Sensor Readings (last {sensorHistory.length} readings)
+          Live Sensor Readings (last {Math.min(sensorHistory.length, 20)} readings)
         </div>
         {sensorHistory.length > 0 && (
           <button
@@ -152,7 +165,7 @@ export default function TruckDetail({ truckId, fleet, prediction, sensorHistory,
         ? (
           <div className="sensor-grid">
             {SENSOR_KEYS.map(s => (
-              <SensorChart key={s.key} data={sensorHistory} sensor={s} />
+              <SensorChart key={s.key} data={sensorHistory.slice(-20)} sensor={s} />
             ))}
           </div>
         )

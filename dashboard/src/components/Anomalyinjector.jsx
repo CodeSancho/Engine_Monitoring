@@ -1,9 +1,8 @@
 // src/components/AnomalyInjector.jsx
 //
-// Testing/demo tool: sets EXACT sensor values on a running engine's live
-// buffer (e.g. "set Temperature to 140°C"), then lets the real,
-// unmodified prediction+alert pipeline react to it naturally on its next
-// tick. Does not fake an alert directly.
+// Testing/demo tool: sets exact values on a running engine's live buffer.
+// High-side safety limits trigger immediately; the model still evaluates
+// the injected values in its next rolling window.
 //
 
 import { useState, useEffect, useRef } from 'react';
@@ -67,9 +66,8 @@ export default function AnomalyInjector() {
     const onAlert = alert => {
       const current = awaitingRef.current;
       if (!current || current.equipmentId !== alert.equipment_id) return;
-      const score = Number(alert.anomaly_score);
-      const scoreText = Number.isFinite(score) ? ` (model anomaly score ${(score * 100).toFixed(1)}%)` : '';
-      setStatus({ ok: true, message: `Alert generated for ${alert.equipment_id}${scoreText}.` });
+      setStatus({ ok: true, message: alert.message || `Alert generated for ${alert.equipment_id}.` });
+      awaitingRef.current = null;
     };
     socket.on('prediction', onPrediction);
     socket.on('new_alert', onAlert);
@@ -138,6 +136,11 @@ export default function AnomalyInjector() {
     awaitingRef.current = { equipmentId, fields: sensors.map(sensor => sensor.key) };
     injectAnomaly({ equipment_id: equipmentId, sensors })
       .then(res => {
+        if (res.high_limit_alert) {
+          awaitingRef.current = null;
+          setStatus({ ok: true, message: res.high_limit_alert.message });
+          return;
+        }
         setStatus({
           ok: true,
           pending: true,

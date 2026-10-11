@@ -37,6 +37,65 @@ const ENGINES = Array.from({ length: ENGINE_COUNT }, (_, i) => ({
 const WINDOW_SIZE    = 30;   // readings per prediction window
 const EMIT_INTERVAL  = 1500; // ms between readings (1.5s = fast demo)
 
+// Independent high-side safety limits. Low values remain the ML model's
+// responsibility; these limits catch an over-range sensor even when the
+// window-level anomaly model does not flag it.
+const HIGH_LIMITS = {
+  Temperature_C: 120,
+  RPM: 4000,
+  Vibration_X: 1,
+  Vibration_Y: 1,
+  Vibration_Z: 1,
+  Torque_Nm: 200,
+  Fuel_Efficiency: 30,
+  Power_Output_kW: 100,
+};
+
+function getHighLimitBreaches(reading) {
+  return Object.entries(HIGH_LIMITS)
+    .filter(([key, limit]) => Number.isFinite(Number(reading[key])) && Number(reading[key]) > limit)
+    .map(([key, limit]) => ({ key, limit, value: Number(reading[key]) }));
+}
+
+function createHighLimitAlert(engine, reading, io) {
+  const breaches = getHighLimitBreaches(reading);
+  const state = engineState[engine.id];
+  if (breaches.length === 0) {
+    if (state) {
+      state.highLimitAlertSignature = null;
+      state.highLimitAlert = null;
+    }
+    return null;
+  }
+
+  const details = breaches.map(({ key, limit, value }) => `${key} ${value} exceeds ${limit}`);
+  const signature = breaches.map(({ key, value }) => `${key}:${value}`).join('|');
+  if (state?.highLimitAlertSignature === signature) return state.highLimitAlert || null;
+  if (state) state.highLimitAlertSignature = signature;
+  const alert = createAlert({
+    equipment_id: engine.id,
+    severity: 'ANOMALY',
+    anomaly_score: 1,
+    message: `High sensor limit exceeded: ${details.join('; ')}.`,
+    feature_snapshot: Object.fromEntries(breaches.map(({ key, value }) => [key, value])),
+    top_anomalous_features: details,
+  });
+  if (state) state.highLimitAlert = alert;
+  if (fleetStatus[engine.id]) {
+    fleetStatus[engine.id] = {
+      ...fleetStatus[engine.id],
+      severity: 'ANOMALY',
+      anomaly_score: 1,
+      message: alert.message,
+      last_reading: reading,
+      feature_snapshot: alert.feature_snapshot,
+      top_features: details,
+    };
+  }
+  if (io) io.emit('new_alert', alert);
+  return alert;
+}
+
 if (ENGINE_COUNT > 33) {
   console.warn(`[Simulator] ENGINE_COUNT=${ENGINE_COUNT} exceeds 33 -- each engine's `
     + `segment (${Math.floor(1000 / ENGINE_COUNT)} rows) is now smaller than the `
@@ -162,6 +221,13 @@ function replayRows(rows, io, flaskUrl) {
       if (state.cursor >= state.segment.end) state.cursor = state.segment.start;
 
       state.buffer.push(reading);
+      if (state.pendingInjectedReadings > 0) {
+        for (const { key, value } of state.injectionTargets) {
+          reading[key] = value.toFixed(SENSOR_DECIMALS[key]);
+        }
+        state.pendingInjectedReadings--;
+        if (state.pendingInjectedReadings === 0) state.injectionTargets = [];
+      }
       state.readingCount++;
 
       if (database.isDatabaseEnabled()) {
@@ -176,11 +242,19 @@ function replayRows(rows, io, flaskUrl) {
         buffer_size:  state.buffer.length,
       });
 
+      createHighLimitAlert(engine, reading, io);
+
       if (state.buffer.length >= WINDOW_SIZE) {
         const result = await callPredictor(engine.id, state.buffer, flaskUrl);
 
         if (result) {
           state.latestResult = result;
+
+          const highBreaches = getHighLimitBreaches(reading);
+          const effectiveSeverity = highBreaches.length ? 'ANOMALY' : result.severity;
+          const effectiveMessage = highBreaches.length
+            ? `High sensor limit exceeded: ${highBreaches.map(({ key, limit, value }) => `${key} ${value} exceeds ${limit}`).join('; ')}.`
+            : result.message;
 
           if (database.isDatabaseEnabled()) {
             database.savePrediction(engine.id, engine.name, result)
@@ -189,9 +263,9 @@ function replayRows(rows, io, flaskUrl) {
 
           fleetStatus[engine.id] = {
             ...fleetStatus[engine.id],
-            severity:      result.severity,
-            anomaly_score: result.anomaly_score,
-            message:       result.message,
+            severity:      effectiveSeverity,
+            anomaly_score: highBreaches.length ? 1 : result.anomaly_score,
+            message:       effectiveMessage,
             last_reading:  reading,
             reading_count: state.readingCount,
             top_features:  result.top_anomalous_features,
@@ -199,7 +273,7 @@ function replayRows(rows, io, flaskUrl) {
           };
 
           // FIX: severity is now 'NORMAL' or 'ANOMALY' only.
-          if (result.severity !== 'NORMAL') {
+          if (result.severity !== 'NORMAL' && !highBreaches.length) {
             const alert = createAlert({
               equipment_id:     engine.id,
               severity:         result.severity,
@@ -216,6 +290,9 @@ function replayRows(rows, io, flaskUrl) {
             equipment_id:     engine.id,
             name:             engine.name,
             ...result,
+            severity:         effectiveSeverity,
+            anomaly_score:    highBreaches.length ? 1 : result.anomaly_score,
+            message:          effectiveMessage,
             reading_count:    state.readingCount,
           });
 
@@ -271,13 +348,17 @@ const SENSOR_DECIMALS = {
 };
 
 function getSensorInfo() {
-  return Object.entries(SENSOR_STATS).map(([key, s]) => ({ key, ...s }));
+  return Object.entries(SENSOR_STATS).map(([key, s]) => ({
+    key,
+    ...s,
+    high_limit: HIGH_LIMITS[key],
+  }));
 }
 
 // Sets one or more sensors on a running engine's live buffer to EXACT
 // caller-supplied values.
 // sensors: [{ key: 'Temperature_C', value: 140 }, ...]
-function injectAnomaly({ equipment_id, sensors }) {
+function injectAnomaly({ equipment_id, sensors, io }) {
   const state = engineState[equipment_id];
   if (!state) throw new Error(`Unknown engine: ${equipment_id}`);
   if (state.buffer.length === 0) throw new Error(`${equipment_id}'s buffer is empty -- wait for the simulator to warm up`);
@@ -289,7 +370,7 @@ function injectAnomaly({ equipment_id, sensors }) {
     const key = s.key;
     if (!SENSOR_STATS[key]) throw new Error(`Unknown or non-injectable sensor: ${key} (expected one of ${Object.keys(SENSOR_STATS).join(', ')})`);
     const value = Number(s.value);
-    if (isNaN(value)) throw new Error(`Value for ${key} must be a number, got: ${s.value}`);
+    if (!Number.isFinite(value)) throw new Error(`Value for ${key} must be a finite number, got: ${s.value}`);
     return { key, value };
   });
 
@@ -301,6 +382,14 @@ function injectAnomaly({ equipment_id, sensors }) {
     return r;
   });
 
+  // Immediate, deterministic safety check on the injected reading. The
+  // ML predictor is still called on the next tick, but does not gate a
+  // high-limit alert.
+  const latestReading = state.buffer[state.buffer.length - 1];
+  const highLimitAlert = createHighLimitAlert(state.info, latestReading, io);
+  state.injectionTargets = targets;
+  state.pendingInjectedReadings = Math.max(state.pendingInjectedReadings || 0, WINDOW_SIZE);
+
   const fieldsChanged = targets.map(t => t.key);
 
   console.log(`[Inject] ${equipment_id} <- set [${targets.map(t => `${t.key}=${t.value}`).join(', ')}]`
@@ -311,6 +400,7 @@ function injectAnomaly({ equipment_id, sensors }) {
     buffer_size: state.buffer.length,
     readings_affected: state.buffer.length,   // every buffered reading was set, matching count
     fields_changed: fieldsChanged,
+    high_limit_alert: highLimitAlert,
   };
 }
 

@@ -46,7 +46,7 @@ export default function App() {
     socket.on('sensor_reading', data => {
       setSensorHistory(prev => {
         const hist = prev[data.equipment_id] || [];
-        return { ...prev, [data.equipment_id]: [...hist, { ...data.reading, ts: Date.now() }].slice(-60) };
+        return { ...prev, [data.equipment_id]: [...hist, { ...data.reading, ts: Date.now() }].slice(-20) };
       });
     });
     socket.on('new_alert', alert => setAlerts(prev => [alert, ...prev].slice(0, 100)));
@@ -75,7 +75,7 @@ export default function App() {
           ...prev,
           [id]: [...byTimestamp.values()]
             .sort((a, b) => new Date(a.timestamp || a.ts) - new Date(b.timestamp || b.ts))
-            .slice(-60),
+            .slice(-20),
         };
       });
     }).catch(err => {

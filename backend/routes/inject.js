@@ -1,11 +1,9 @@
 /**
  * routes/inject.js  —  Manual anomaly injection (testing/demo only)
  *
- * Sets exact caller-supplied values on a running engine's live buffer,
- * so the NEXT natural prediction tick genuinely evaluates them through
- * the real, unmodified alert pipeline. This does not fake an alert
- * directly -- it only sets input data honestly to whatever value the
- * caller chose, and lets the existing pipeline react to it.
+ * Sets exact caller-supplied values on a running engine's live buffer.
+ * High-side safety limits are checked immediately; the ML model also
+ * evaluates the injected values in its normal rolling prediction window.
  */
 const express = require('express');
 const router  = express.Router();
@@ -25,7 +23,7 @@ router.get('/sensor-info', (req, res) => {
 router.post('/', (req, res) => {
   const { equipment_id, sensors } = req.body;
   try {
-    const result = injectAnomaly({ equipment_id, sensors });
+    const result = injectAnomaly({ equipment_id, sensors, io: req.app.get('io') });
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
