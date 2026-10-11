@@ -2,7 +2,7 @@
 feature_engineer.py
 Sliding window feature extraction for both ziya07 and CMAPSS datasets.
 
-FIXES APPLIED (see conversation for full reasoning):
+
   1. ziya07 windowing is now TIME-based (pandas timestamp rolling), not
      row-position-within-Operational_Mode-group. The old approach grouped
      by mode first, which scatters rows across the whole 3.5-day span --

@@ -3,21 +3,9 @@
  * In-memory alert store (replaces PostgreSQL for prototype).
  * Swap for pg queries when deploying to production.
  *
- * FIXES APPLIED (see conversation):
- *  1. rul_hours removed entirely. /predict no longer returns it -- RUL
- *     was moved to /predict_rul_demo since the ziya07-to-CMAPSS sensor
- *     mapping was proven physically invalid. Keeping rul_hours here would
- *     have silently stored `undefined` on every alert with no error.
- *  2. getActiveAlerts now sorts by anomaly_score (continuous, real signal)
- *     instead of a fixed severity-tier map (CRITICAL/CAUTION/WARNING) that
- *     no longer matches the new two-tier severity ('NORMAL'/'ANOMALY').
- *     The old map would have silently given every alert the same sort
- *     priority, since 'ANOMALY' was never a key in it.
- *  3. Added top_anomalous_features to the stored alert (it was computed
- *     by Flask and available, but previously dropped before reaching the
- *     alert store) so the frontend can show which sensor drove the alert
- *     and its likely physical component -- see AlertPanel.jsx.
  */
+
+const database = require('./databaseService');
 
 let alerts     = [];   // all alerts ever created
 let alertIdSeq = 1;
@@ -42,8 +30,45 @@ function createAlert({ equipment_id, severity, anomaly_score, message, feature_s
     acknowledged_at: null,
   };
   alerts.push(alert);
+  if (database.isDatabaseEnabled()) {
+    database.createAlertRecord(alert).then(persisted => {
+      if (persisted) alert.id = persisted.id;
+    }).catch(err => console.error('[Database] Could not persist alert:', err.message));
+  }
   console.log(`[Alert] ${severity} | ${equipment_id} | score=${anomaly_score.toFixed(3)}`);
   return alert;
+}
+
+async function listActiveAlerts() {
+  if (database.isDatabaseEnabled()) {
+    try { return await database.getAlerts({ activeOnly: true, limit: 500 }); }
+    catch (err) { console.error('[Database] Could not load active alerts:', err.message); }
+  }
+  return getActiveAlerts();
+}
+
+async function listAllAlerts({ limit = 50 } = {}) {
+  if (database.isDatabaseEnabled()) {
+    try { return await database.getAlerts({ limit }); }
+    catch (err) { console.error('[Database] Could not load alerts:', err.message); }
+  }
+  return getAllAlerts({ limit });
+}
+
+async function listAlertsByEquipment(equipment_id) {
+  if (database.isDatabaseEnabled()) {
+    try { return await database.getAlerts({ equipmentId: equipment_id, limit: 500 }); }
+    catch (err) { console.error('[Database] Could not load equipment alerts:', err.message); }
+  }
+  return getAlertsByEquipment(equipment_id);
+}
+
+async function acknowledgeAlertById(id) {
+  if (database.isDatabaseEnabled()) {
+    try { return await database.acknowledgeAlertRecord(id); }
+    catch (err) { console.error('[Database] Could not acknowledge alert:', err.message); }
+  }
+  return acknowledgeAlert(id);
 }
 
 function getActiveAlerts() {
@@ -77,4 +102,8 @@ module.exports = {
   getAllAlerts,
   acknowledgeAlert,
   getAlertsByEquipment,
+  listActiveAlerts,
+  listAllAlerts,
+  listAlertsByEquipment,
+  acknowledgeAlertById,
 };

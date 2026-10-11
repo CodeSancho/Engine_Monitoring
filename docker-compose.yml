@@ -36,6 +36,9 @@ services:
       - PORT=3000
       - FLASK_URL=http://flask_ml:5001
       - DATA_PATH=/app/data/raw/engine_failure_dataset.csv
+      - DATABASE_URL=${DATABASE_URL:-}
+      - DATABASE_SSL=${DATABASE_SSL:-true}
+      - DB_POOL_MAX=${DB_POOL_MAX:-10}
     depends_on:
       flask_ml:
         condition: service_healthy

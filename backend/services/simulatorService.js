@@ -4,31 +4,13 @@
  * Maintains a rolling 30-reading buffer per engine.
  * When buffer is full, calls Flask /predict and broadcasts result.
  *
- * FIXES APPLIED (see conversation):
- *  1. rul_hours removed from fleetStatus and createAlert -- /predict no
- *     longer returns it. Previously this silently became `undefined` on
- *     every update (no error, just quietly wrong/missing data forever).
- *  2. severity is now the new two-tier scheme ('NORMAL' / 'ANOMALY'),
- *     matching what /predict actually returns.
- *  3. Truck naming (Komatsu/Cat models) replaced with plain "Engine 1/2/3"
- *     -- the project scope is engine-level anomaly detection, not
- *     truck-specific, so the naming now matches what's actually validated.
- *  4. Removed the per-engine "factor" fudge (1.0 / 1.02 / 0.98) that used
- *     to fake variation between engines by multiplying the SAME rows.
- *     ziya07 has no real per-unit column, so instead of inventing a
- *     multiplier, each virtual engine is now assigned its own genuinely
- *     distinct, non-overlapping segment of the real CSV and loops within
- *     that segment independently -- real data assignment, not fabricated
- *     variation. See assignSegments() / replayRows() below.
- *  5. Engine count is now configurable (ENGINE_COUNT below) instead of a
- *     hardcoded 3-entry array -- see the honest ceiling note on
- *     ENGINE_COUNT for why "a lot" has a real, data-driven limit here.
  */
 
 const fs          = require('fs');
 const csv         = require('csv-parser');
 const axios       = require('axios');
 const { createAlert } = require('./alertService');
+const database = require('./databaseService');
 
 // ── Engine config ──────────────────────────────────────────────────────────
 // How many virtual engines to run, each replaying its OWN real, non-
@@ -182,6 +164,11 @@ function replayRows(rows, io, flaskUrl) {
       state.buffer.push(reading);
       state.readingCount++;
 
+      if (database.isDatabaseEnabled()) {
+        database.saveReading(engine.id, engine.name, reading)
+          .catch(err => console.error('[Database] Could not persist reading:', err.message));
+      }
+
       io.emit('sensor_reading', {
         equipment_id: engine.id,
         name:         engine.name,
@@ -194,6 +181,11 @@ function replayRows(rows, io, flaskUrl) {
 
         if (result) {
           state.latestResult = result;
+
+          if (database.isDatabaseEnabled()) {
+            database.savePrediction(engine.id, engine.name, result)
+              .catch(err => console.error('[Database] Could not persist prediction:', err.message));
+          }
 
           fleetStatus[engine.id] = {
             ...fleetStatus[engine.id],

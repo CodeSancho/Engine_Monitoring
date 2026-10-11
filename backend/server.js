@@ -22,6 +22,7 @@ const { initAlertStore }     = require('./services/alertService');
 const fleetRoutes            = require('./routes/fleet');
 const alertRoutes            = require('./routes/alerts');
 const { setupWebSocket }     = require('./websocket/liveStream');
+const database               = require('./services/databaseService');
   const injectRoutes = require('./routes/inject');
 const app    = express();
 const server = http.createServer(app);
@@ -48,13 +49,15 @@ app.use('/api/inject', injectRoutes);
 const rulDemoRoutes = require('./routes/rulDemo');
 app.use('/api/rul-demo', rulDemoRoutes);
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  const databaseStatus = await database.checkDatabase();
   res.json({
-    status:    'ok',
+    status:    databaseStatus.connected || !databaseStatus.configured ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
     services: {
       backend:  'running',
       flaskUrl: FLASK_URL,
+      database: databaseStatus,
     }
   });
 });

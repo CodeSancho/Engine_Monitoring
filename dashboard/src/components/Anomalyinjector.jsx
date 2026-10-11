@@ -5,28 +5,9 @@
 // unmodified prediction+alert pipeline react to it naturally on its next
 // tick. Does not fake an alert directly.
 //
-// STYLE PASS (see conversation):
-//  - Moved off ad-hoc dark-theme inline styles (#334155 borders, neon
-//    rgba(96,165,250,...) glows) onto the same light card system as the
-//    rest of the app (FleetOverview / EngineSensorCard).
-//  - SEV_COLOR was a locally-duplicated copy of the same map now
-//    shared across TruckDetail/AlertPanel/EngineSensorCard -- moved to
-//    ../constants/severity so a future fix only has to happen once.
-//  - "back-btn" was being reused for three unrelated things (engine
-//    picker, preset chips, the primary submit action). Split into
-//    purpose-built classes: .engine-pick, .btn-util, .btn-inject.
-//  - Engine picker now shows each engine's real photo (same treatment
-//    as EngineSensorCard's .engine-card__art) instead of a plain
-//    name+badge button -- selecting one visually brings it forward
-//    (full opacity + lift) so it's clear which engine you're about to
-//    inject into. CORRECTION: there's no per-engine photo lookup in
-//    this codebase -- EngineSensorCard just imports one shared static
-//    asset (src/assets/engine-card.webp), same generic engine photo
-//    for every truck. Imported that directly below instead of the
-//    made-up getEngineImage() from the previous pass, which doesn't
-//    exist and broke the build.
+
 import { useState, useEffect, useRef } from 'react';
-import { injectAnomaly, fetchInjectSensorInfo, fetchFleetStatus } from '../services/api';
+import { injectAnomaly, fetchInjectSensorInfo, fetchFleetStatus, socket } from '../services/api';
 import { getComponentInfo } from '../utils/engineComponents';
 import { getSeverityColor } from '../constants/Severity';
 import engineCardImg from '../assets/engine-card.webp';
@@ -49,7 +30,9 @@ export default function AnomalyInjector() {
   const [values, setValues]           = useState({});   // { Temperature_C: '140', ... } -- only checked sensors present
   const [status, setStatus]           = useState(null); // { ok, message }
   const [loading, setLoading]         = useState(false);
+  const [awaitingResult, setAwaitingResult] = useState(null);
   const pollRef = useRef(null);
+  const awaitingRef = useRef(null);
 
   // Live engine cards -- poll fleet status while this panel is open.
   useEffect(() => {
@@ -64,6 +47,38 @@ export default function AnomalyInjector() {
     poll();
     pollRef.current = setInterval(poll, 3000);
     return () => clearInterval(pollRef.current);
+  }, []);
+
+  // Report the detector's actual decision for the injected engine instead
+  // of implying that changing a value must automatically create an alert.
+  useEffect(() => {
+    const onPrediction = prediction => {
+      const current = awaitingRef.current;
+      if (!current || current.equipmentId !== prediction.equipment_id) return;
+      const score = Number(prediction.anomaly_score);
+      const scoreText = Number.isFinite(score) ? ` Model anomaly score: ${(score * 100).toFixed(1)}%.` : '';
+      setStatus({
+        ok: true,
+        message: prediction.severity === 'NORMAL'
+          ? `The model evaluated ${current.fields.join(', ')} on ${current.equipmentId} and classified the current sensor window as NORMAL.${scoreText} No alert was generated. The detector evaluates a rolling window, so one extreme value does not guarantee an alert.`
+          : `Alert generated for ${current.equipmentId} after evaluating ${current.fields.join(', ')}.${scoreText}`,
+      });
+      awaitingRef.current = null;
+      setAwaitingResult(null);
+    };
+    const onAlert = alert => {
+      const current = awaitingRef.current;
+      if (!current || current.equipmentId !== alert.equipment_id) return;
+      const score = Number(alert.anomaly_score);
+      const scoreText = Number.isFinite(score) ? ` (model anomaly score ${(score * 100).toFixed(1)}%)` : '';
+      setStatus({ ok: true, message: `Alert generated for ${alert.equipment_id}${scoreText}.` });
+    };
+    socket.on('prediction', onPrediction);
+    socket.on('new_alert', onAlert);
+    return () => {
+      socket.off('prediction', onPrediction);
+      socket.off('new_alert', onAlert);
+    };
   }, []);
 
   // Real per-sensor stats, once, to drive inputs + presets.
@@ -126,10 +141,12 @@ export default function AnomalyInjector() {
       .then(res => {
         setStatus({
           ok: true,
-          message: `Set ${res.fields_changed.join(', ')} on ${res.equipment_id} — `
-                  + `${res.readings_affected} buffered readings updated. `
-                  + `Watch the dashboard for the next prediction tick.`,
+          pending: true,
+          message: `Applied ${res.fields_changed.join(', ')} to ${res.equipment_id} (${res.readings_affected} buffered readings). Waiting for the next model evaluation…`,
         });
+        const pending = { equipmentId: res.equipment_id, fields: res.fields_changed };
+        awaitingRef.current = pending;
+        setAwaitingResult(pending);
       })
       .catch(err => {
         const msg = err.response?.data?.error || err.message;
@@ -219,14 +236,21 @@ export default function AnomalyInjector() {
                     typical {s.min}–{s.max} (avg {s.mean})
                   </div>
                   {checked && (
-                    <input
-                      type="number"
-                      step="any"
-                      value={values[s.key]}
-                      onChange={e => setSensorValue(s.key, e.target.value)}
-                      className="sensor-card__input"
-                      placeholder={`e.g. ${s.mean}`}
-                    />
+                    <>
+                      <input
+                        type="number"
+                        step="any"
+                        value={values[s.key]}
+                        onChange={e => setSensorValue(s.key, e.target.value)}
+                        className="sensor-card__input"
+                        placeholder={`e.g. ${s.mean}`}
+                      />
+                      {Number.isFinite(Number(values[s.key])) && s.std > 0 && (
+                        <div className="injector-deviation">
+                          {((Number(values[s.key]) - s.mean) / s.std).toFixed(1)} standard deviations from average
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );
@@ -240,7 +264,7 @@ export default function AnomalyInjector() {
       </button>
 
       {status && (
-        <div className={`injector-status${status.ok ? ' injector-status--ok' : ' injector-status--error'}`}>
+        <div className={`injector-status${status.pending ? ' injector-status--pending' : status.ok ? ' injector-status--ok' : ' injector-status--error'}`}>
           {status.message}
         </div>
       )}

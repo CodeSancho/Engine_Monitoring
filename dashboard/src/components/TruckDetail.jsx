@@ -1,49 +1,5 @@
 // src/components/TruckDetail.jsx
-//
-// FIXES APPLIED (see conversation):
-//  1. SEV_COLOR previously had no entry for 'ANOMALY' (only the old
-//     four-tier NORMAL/WARNING/CAUTION/CRITICAL scheme), so an anomalous
-//     engine fell through to the '|| #22c55e' default -- GREEN, the same
-//     color as normal. Confirmed live: this made real anomalies visually
-//     indistinguishable from healthy engines. Now maps the real two-tier
-//     scheme explicitly.
-//  2. RULGauge and all RUL display removed from this view. RUL is no
-//     longer part of live per-engine monitoring (the ziya07-to-CMAPSS
-//     sensor mapping was proven physically invalid); it now lives as a
-//     separate demo panel in ModelInfo.jsx, validated on CMAPSS-native
-//     data only.
-//  3. truck.model reference removed -- simulatorService.js no longer
-//     assigns engine "models" (Komatsu/Cat naming was dropped in favor
-//     of generic Engine 1/2/3).
-//  4. STYLE PASS: SEV_COLOR's bright #22c55e/#ef4444 swapped for the
-//     same muted green/red used everywhere else in the app. The sensor
-//     chart tooltip was still the leftover dark-theme style (#1e293b
-//     background) from before the light-theme pass -- fixed. The six
-//     sensor line colors were saturated Tailwind-400 accents that read
-//     "neon" next to the rest of the muted palette -- replaced with a
-//     desaturated set. Misc inline grays (#94a3b8, #f97316) swapped for
-//     the app's --text3 / --copper variables so they track future
-//     palette tweaks automatically instead of drifting out of sync.
-//  5. NEW: "Export CSV" button beside the Live Sensor Readings
-//     heading -- downloads the full sensorHistory window (all raw
-//     sensor fields) via the shared csvExport util.
-//  6. BUG FIX: the Y-axis domain used multiplicative padding
-//     (min * 0.98, max * 1.02), which only pads correctly when every
-//     value is positive. Vibration_X/Vibration_Y oscillate around
-//     zero and go negative, where that math pulls the floor toward
-//     zero -- above the real minimum -- and clips the bottom of the
-//     line instead of padding it; a flat signal also collapsed the
-//     domain to zero height. Replaced with additive padding based on
-//     the actual data range, which handles negative values and flat
-//     signals correctly.
-//  7. BUG FIX: Y-axis labels were getting their leading characters
-//     clipped (e.g. "0.599" rendering as just "599") -- the chart
-//     used a negative left margin (-20) tuned for short integer
-//     labels, which pushed the axis text partly outside the visible
-//     canvas once ticks started showing decimals. Eased the margin,
-//     widened the axis, and added a tickFormatter so labels stay
-//     short and consistent instead of depending on recharts' default
-//     precision.
+
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { getComponentInfo } from '../utils/engineComponents';
 import { SEV_COLOR, getSeverityColor } from '../constants/Severity';

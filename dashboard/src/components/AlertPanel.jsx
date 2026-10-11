@@ -1,31 +1,5 @@
 // src/components/AlertPanel.jsx
-//
-// FIXES APPLIED (see conversation):
-//  1. SEV_COLOR had no 'ANOMALY' entry (only the old four-tier
-//     NORMAL/WARNING/CAUTION/CRITICAL scheme) -- every real alert fell
-//     through to the '|| #64748b' default gray instead of red. Same bug
-//     class already fixed in TruckDetail.jsx; this file was missed.
-//  2. alert.rul_hours?.toFixed(0) always rendered blank -- rul_hours was
-//     removed from alertService.js/simulatorService.js (see their own
-//     comments) but this dead chip was never removed here. Replaced
-//     with the alert's top anomalous feature + its likely component,
-//     which the alert object now actually carries.
-//  3. `counts` initializer used the old four-tier keys (WARNING/CAUTION/
-//     CRITICAL) -- none of which are ever set on a real alert anymore
-//     (severity is two-tier: NORMAL/ANOMALY, and only ANOMALY alerts
-//     are created), so the count chips silently never rendered.
-//  4. STYLE PASS: SEV_COLOR's bright #22c55e/#ef4444 swapped for the
-//     same muted green/red used everywhere else (EngineSensorCard,
-//     TruckDetail). sev-badge and count-chip were filled colored boxes
-//     (backgroundColor set inline) -- both are now plain colored text,
-//     no box, matching the rest of the app. The "likely part" note was
-//     still using leftover dark-theme colors (#94a3b8 on a light page,
-//     and #cbd5e1 -- a *light* slate meant for dark backgrounds, nearly
-//     invisible here) -- fixed to the light-theme text tokens.
-//  5. NEW: "Export CSV" button in the header, next to the count chips
-//     -- downloads the currently-active alerts (with their sensor
-//     snapshot and top anomalous feature) via the shared csvExport
-//     util. Only shown when there are active alerts to export.
+
 import { acknowledgeAlert } from '../services/api';
 import { getComponentInfo } from '../utils/engineComponents';
 import { getSeverityColor } from '../constants/Severity';

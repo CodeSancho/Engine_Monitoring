@@ -1,6 +1,6 @@
 // src/App.jsx
 import { useState, useEffect, useCallback } from 'react';
-import { socket, fetchFleetStatus, fetchActiveAlerts } from './services/api';
+import { socket, fetchFleetStatus, fetchActiveAlerts, fetchTruckReadings } from './services/api';
 import FleetOverview   from './components/FleetOverview';
 import TruckDetail     from './components/TruckDetail';
 import AlertPanel      from './components/AlertPanel';
@@ -60,7 +60,28 @@ export default function App() {
   });
 
   const activeAlertCount = alerts.filter(a => !a.acknowledged).length;
-  const openTruck = id => { setSelectedTruck(id); setView('truck'); };
+  const openTruck = id => {
+    setSelectedTruck(id);
+    setView('truck');
+    fetchTruckReadings(id).then(({ readings = [] }) => {
+      setSensorHistory(prev => {
+        const live = prev[id] || [];
+        const byTimestamp = new Map();
+        [...readings, ...live].forEach(reading => {
+          const key = reading.timestamp || reading.ts;
+          byTimestamp.set(key, reading);
+        });
+        return {
+          ...prev,
+          [id]: [...byTimestamp.values()]
+            .sort((a, b) => new Date(a.timestamp || a.ts) - new Date(b.timestamp || b.ts))
+            .slice(-60),
+        };
+      });
+    }).catch(err => {
+      console.warn(`[Dashboard] Could not load saved readings for ${id}:`, err.message);
+    });
+  };
   const goFleet   = ()  => { setView('fleet'); setSelectedTruck(null); };
 
   return (

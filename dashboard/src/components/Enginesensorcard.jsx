@@ -1,21 +1,6 @@
 // src/components/EngineSensorCard.jsx
-//
-// Fleet-grid card: real engine photo as the card art, with live sensor
-// callouts overlaid on top -- same feature_snapshot fields AlertPanel.jsx
-// reads (temperature_mean, rpm_mean, vibration_magnitude,
-// fuel_efficiency_mean). One shared photo across all cards (it's not
-// per-truck imagery, just a representative engine shot), anchor points
-// are eyeballed against that photo -- nudge the `anchor` percentages
-// below if you swap in a different image.
-//
-// Put the photo at src/assets/engine-card.webp (or wherever your app
-// serves static assets) and adjust IMG_SRC below to match.
-//
-// STYLE PASS (see conversation): sev-badge was a filled colored box
-// (backgroundColor set inline) -- now plain colored text, no box, same
-// as TruckDetail/AlertPanel/AnomalyInjector. Fallback gray for an
-// unrecognized severity swapped to var(--text3) instead of a hardcoded
-// hex so it tracks the palette.
+
+
 import IMG_SRC from '../assets/engine-card.webp';
 import { getSeverityColor } from '../constants/Severity';
 

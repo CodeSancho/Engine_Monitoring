@@ -630,8 +630,7 @@ button {
 }
 
 
-/* ---------- Detail message -- kept as a callout, not a "card";
-   the colored left border IS the content (severity), so it stays ---------- */
+
 
 .detail-message {
   background: transparent;
@@ -1415,6 +1414,17 @@ button {
   max-width: 180px;
 }
 
+.injector-deviation {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.injector-status--pending {
+  border-left: 3px solid var(--copper);
+  color: var(--text);
+}
+
 .sensor-card__input:focus {
   outline: none;
   border-color: var(--sky);
@@ -1789,14 +1799,12 @@ button {
   }
 }
 
-/* Small utility -- used by EngineSensorCard's anomaly % readout, was
-   referenced but never actually defined. */
+
 .mono {
   font-family: 'IBM Plex Mono', monospace;
 }
 
-/* Section heading + action button on one row (used for the "Export
-   CSV" button beside Live Sensor Readings in TruckDetail). */
+
 .truck-detail__section-header {
   display: flex;
   align-items: baseline;
