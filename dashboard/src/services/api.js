@@ -32,6 +32,10 @@ export const fetchRulDemo = (start = 0, unit = 1) =>
 // real CMAPSS unit ids available to pick from for the demo above.
 export const fetchRulDemoUnits = () => api.get('/api/rul-demo/units').then(r => r.data);
 
+// Component-level Random Forest RUL demo using held-out synthetic engine histories.
+export const fetchComponentRulEngines = () => api.get('/api/component-rul/engines').then(r => r.data);
+export const fetchComponentRul = engineId => api.get(`/api/component-rul/${engineId}`).then(r => r.data);
+
 // manual anomaly injection for testing/demo -- sets exact sensor
 // values on a running engine's live buffer, so the next natural
 // prediction genuinely evaluates them.

@@ -8,6 +8,8 @@ const pool = connectionString ? new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 }) : null;
+const equipmentUpserts = new Map();
+let supportsSourceDeviceId = true;
 
 if (pool) {
   pool.on('error', err => console.error('[Database] Unexpected pool error:', err.message));
@@ -33,22 +35,45 @@ async function query(text, values) {
   return pool.query(text, values);
 }
 
-async function upsertEquipment(equipmentId, name) {
+async function upsertEquipment(equipmentId, name, sourceDeviceId = null) {
   if (!pool) return;
-  await query(`insert into public.equipment (equipment_id, name)
-    values ($1, $2) on conflict (equipment_id) do update set name = excluded.name`,
-  [equipmentId, name]);
+  if (equipmentUpserts.has(equipmentId)) return equipmentUpserts.get(equipmentId);
+  const registration = (async () => {
+    if (supportsSourceDeviceId) {
+      try {
+        await query(`insert into public.equipment (equipment_id, name, source_device_id)
+          values ($1, $2, $3) on conflict (equipment_id) do update
+            set name = excluded.name,
+                source_device_id = coalesce(excluded.source_device_id, public.equipment.source_device_id)`,
+        [equipmentId, name, sourceDeviceId === null ? null : String(sourceDeviceId)]);
+        return;
+      } catch (err) {
+        // Keep existing databases usable until migration 002 is applied.
+        if (err.code !== '42703') throw err;
+        supportsSourceDeviceId = false;
+        console.warn('[Database] equipment.source_device_id is missing; storing source identity in metadata until migration 002 is applied.');
+      }
+    }
+    await query(`insert into public.equipment (equipment_id, name, metadata)
+      values ($1, $2, $3::jsonb) on conflict (equipment_id) do update
+        set name = excluded.name,
+            metadata = public.equipment.metadata || excluded.metadata`,
+    [equipmentId, name, JSON.stringify(sourceDeviceId === null ? {} : { source_engine_id: sourceDeviceId })]);
+  })();
+  equipmentUpserts.set(equipmentId, registration);
+  try { await registration; }
+  catch (err) { equipmentUpserts.delete(equipmentId); throw err; }
 }
 
-async function saveReading(equipmentId, name, reading) {
+async function saveReading(equipmentId, name, reading, sourceDeviceId = null) {
   if (!pool) return;
-  await upsertEquipment(equipmentId, name);
+  await upsertEquipment(equipmentId, name, sourceDeviceId);
   await query(`insert into public.sensor_readings (
     equipment_id, recorded_at, temperature_c, rpm, fuel_efficiency,
     vibration_x, vibration_y, vibration_z, torque_nm, power_output_kw,
     fault_condition, operational_mode, raw_reading
   ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)`, [
-    equipmentId, reading.timestamp || new Date().toISOString(),
+    equipmentId, reading.recorded_at || reading.timestamp || new Date().toISOString(),
     numberOrNull(reading.Temperature_C), numberOrNull(reading.RPM),
     numberOrNull(reading.Fuel_Efficiency), numberOrNull(reading.Vibration_X),
     numberOrNull(reading.Vibration_Y), numberOrNull(reading.Vibration_Z),
@@ -70,9 +95,9 @@ async function getSensorReadings(equipmentId, limit = 60) {
   }));
 }
 
-async function savePrediction(equipmentId, name, result) {
+async function savePrediction(equipmentId, name, result, sourceDeviceId = null) {
   if (!pool) return;
-  await upsertEquipment(equipmentId, name);
+  await upsertEquipment(equipmentId, name, sourceDeviceId);
   await query(`insert into public.predictions (
     equipment_id, severity, anomaly_score, message, feature_snapshot,
     top_anomalous_features, model_metadata
@@ -86,7 +111,8 @@ async function savePrediction(equipmentId, name, result) {
 
 async function createAlertRecord(alert) {
   if (!pool) return null;
-  await upsertEquipment(alert.equipment_id, alert.name || alert.equipment_id);
+  await upsertEquipment(alert.equipment_id, alert.name || alert.equipment_id,
+    alert.feature_snapshot?.source_engine_id ?? null);
   const { rows } = await query(`insert into public.alerts (
     equipment_id, severity, anomaly_score, message, feature_snapshot,
     top_anomalous_features, created_at

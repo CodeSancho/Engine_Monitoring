@@ -24,6 +24,7 @@ const alertRoutes            = require('./routes/alerts');
 const { setupWebSocket }     = require('./websocket/liveStream');
 const database               = require('./services/databaseService');
   const injectRoutes = require('./routes/inject');
+const componentRulRoutes = require('./routes/componentRul');
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
@@ -33,7 +34,7 @@ const io     = new Server(server, {
 const PORT        = process.env.PORT        || 3000;
 const FLASK_URL   = process.env.FLASK_URL   || 'http://localhost:5001';
 const DATA_PATH   = process.env.DATA_PATH   ||
-  path.join(__dirname, '../data/raw/engine_failure_dataset.csv');
+  path.join(__dirname, '../data/raw/synthetic_anomaly_records.csv');
 
 app.use(cors());
 app.use(express.json());
@@ -46,6 +47,7 @@ app.set('flaskUrl', FLASK_URL);
 app.use('/api/fleet',  fleetRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/inject', injectRoutes);
+app.use('/api/component-rul', componentRulRoutes);
 const rulDemoRoutes = require('./routes/rulDemo');
 app.use('/api/rul-demo', rulDemoRoutes);
 

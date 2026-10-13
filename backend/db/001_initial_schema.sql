@@ -4,6 +4,8 @@
 create table if not exists public.equipment (
   equipment_id text primary key,
   name text not null,
+  source_device_id text unique,
+  status text not null default 'active',
   created_at timestamptz not null default now(),
   metadata jsonb not null default '{}'::jsonb
 );

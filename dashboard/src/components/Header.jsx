@@ -73,6 +73,11 @@ function Header({
         )}
 
         {navBtn(
+          'Component RUL',
+          'rul'
+        )}
+
+        {navBtn(
           'Model Info',
           'model'
         )}

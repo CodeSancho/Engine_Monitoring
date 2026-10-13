@@ -13,8 +13,10 @@ services:
     volumes:
       - ./saved_models:/app/saved_models:ro
       - ./data:/app/data:ro
+      - component_rul_model_cache:/app/component_rul_models
     environment:
       - PYTHONUNBUFFERED=1
+      - COMPONENT_RUL_MODEL_DIR=/app/component_rul_models
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
@@ -35,7 +37,7 @@ services:
     environment:
       - PORT=3000
       - FLASK_URL=http://flask_ml:5001
-      - DATA_PATH=/app/data/raw/engine_failure_dataset.csv
+      - DATA_PATH=/app/data/raw/synthetic_anomaly_records.csv
       - DATABASE_URL=${DATABASE_URL:-}
       - DATABASE_SSL=${DATABASE_SSL:-true}
       - DB_POOL_MAX=${DB_POOL_MAX:-10}
@@ -60,3 +62,6 @@ services:
 networks:
   default:
     name: mopani_network
+
+volumes:
+  component_rul_model_cache:

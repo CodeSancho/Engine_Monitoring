@@ -13,26 +13,11 @@ const { createAlert } = require('./alertService');
 const database = require('./databaseService');
 
 // ── Engine config ──────────────────────────────────────────────────────────
-// How many virtual engines to run, each replaying its OWN real, non-
-// overlapping segment of the 1000-row ziya07 CSV (see assignSegments()).
-// Override with the ENGINE_COUNT env var; defaults to 20 here.
-//
-// THE HONEST CEILING: ziya07 has only 1000 total rows and no real per-
-// engine column (unlike CMAPSS, which genuinely has 100 separate units --
-// see rulDemo.js). More engines means smaller segments:
-//   1000 rows / N engines = rows per engine
-// Each prediction needs a full WINDOW_SIZE (30) rows to form one window.
-// So up to floor(1000 / 30) = 33 engines, every engine gets a genuinely
-// unique row for every reading in its window. Past 33, an engine's
-// segment is smaller than one window, so its buffer starts repeating
-// real rows WITHIN a single prediction window -- not fabricated data,
-// just less variety feeding one prediction. 20 is chosen as a solid
-// jump from 3 while staying comfortably under that 33-engine line.
-const ENGINE_COUNT = parseInt(process.env.ENGINE_COUNT, 10) || 20;
-const ENGINES = Array.from({ length: ENGINE_COUNT }, (_, i) => ({
-  id:   `ENGINE-${i + 1}`,
-  name: `Engine ${i + 1}`,
-}));
+// Bound the default replay workload. Raise ENGINE_COUNT (up to 100) to run
+// more source engines after checking the host/database capacity.
+const ENGINE_COUNT = Math.min(100, Math.max(1, Number.parseInt(process.env.ENGINE_COUNT, 10) || 20));
+let ENGINES = [];
+let usesSourceLabels = false;
 
 const WINDOW_SIZE    = 30;   // readings per prediction window
 const EMIT_INTERVAL  = 1500; // ms between readings (1.5s = fast demo)
@@ -96,42 +81,56 @@ function createHighLimitAlert(engine, reading, io) {
   return alert;
 }
 
-if (ENGINE_COUNT > 33) {
-  console.warn(`[Simulator] ENGINE_COUNT=${ENGINE_COUNT} exceeds 33 -- each engine's `
-    + `segment (${Math.floor(1000 / ENGINE_COUNT)} rows) is now smaller than the `
-    + `${WINDOW_SIZE}-row prediction window, so buffers will repeat real rows within `
-    + `a single window. Not fabricated, just less real variety per prediction.`);
-}
-
 // Per-engine state
 const engineState = {};
-ENGINES.forEach(e => {
-  engineState[e.id] = {
-    buffer:        [],
-    latestResult:  null,
-    readingCount:  0,
-    info:          e,
-  };
-});
 
 // Shared in-memory fleet status for REST endpoint
 const fleetStatus = {};
-ENGINES.forEach(e => {
-  fleetStatus[e.id] = {
-    equipment_id:  e.id,
-    name:          e.name,
-    severity:      'NORMAL',
-    anomaly_score: 0,
-    message:       'Awaiting first prediction...',
-    last_reading:  null,
-    reading_count: 0,
+
+function registerEngine(engine) {
+  ENGINES.push(engine);
+  engineState[engine.id] = {
+    buffer: [], cursor: 0, latestResult: null, readingCount: 0, info: engine,
+    emittedEventIds: new Set(),
   };
-});
+  fleetStatus[engine.id] = {
+    equipment_id: engine.id, name: engine.name,
+    source_engine_id: engine.source_engine_id,
+    severity: 'NORMAL', anomaly_score: 0,
+    message: 'Awaiting first reading...', last_reading: null, reading_count: 0,
+  };
+}
 
 // ── Map ziya07 columns to display-friendly sensor names ──────────────────────
 // No per-engine factor here anymore -- each engine's realism now comes from
-// which real rows it's assigned (see assignSegments), not an invented scale.
+  // which source rows belong to its source engine ID, not an invented scale.
 function mapReading(row) {
+  if (usesSourceLabels) {
+    return {
+      Temperature_C: Number(row.Temperature_C).toFixed(2),
+      RPM: Number(row.RPM).toFixed(1),
+      Fuel_Efficiency: Number(row.Fuel_Efficiency_km_per_L).toFixed(3),
+      Vibration_X: Number(row.Vibration_X).toFixed(3),
+      Vibration_Y: Number(row.Vibration_Y).toFixed(3),
+      Vibration_Z: Number(row.Vibration_Z).toFixed(3),
+      Torque_Nm: Number(row.Torque_Nm).toFixed(2),
+      Power_Output_kW: Number(row.Power_Output_kW).toFixed(2),
+      Fault_Condition: Number(row.is_anomaly) || 0,
+      Operational_Mode: row.haul_phase,
+      timestamp: new Date().toISOString(),
+      recorded_at: new Date().toISOString(),
+      source_engine_id: Number(row.engine_id), source_record: Number(row.record),
+      source_timestamp: row.timestamp, haul_phase: row.haul_phase,
+      payload_t: Number(row.payload_t), speed_kmh: Number(row.speed_kmh),
+      total_resistance_pct: Number(row.total_resistance_pct), ambient_C: Number(row.ambient_C),
+      Exhaust_Temp_C: Number(row.Exhaust_Temp_C), Fuel_Consumption_Lph: Number(row.Fuel_Consumption_Lph),
+      Fuel_Efficiency_km_per_L: Number(row.Fuel_Efficiency_km_per_L),
+      Oil_Pressure_kPa: Number(row.Oil_Pressure_kPa), Boost_Pressure_kPa: Number(row.Boost_Pressure_kPa),
+      is_anomaly: Number(row.is_anomaly) === 1, anomaly_type: row.anomaly_type,
+      anomaly_severity: Number(row.anomaly_severity), event_id: Number(row.event_id),
+      context_tag: row.context_tag, split: row.split,
+    };
+  }
   return {
     Temperature_C:    parseFloat(row['Temperature (°C)']).toFixed(2),
     RPM:              parseFloat(row['RPM']).toFixed(0),
@@ -147,19 +146,78 @@ function mapReading(row) {
   };
 }
 
-// ── Assign each virtual engine its own real, non-overlapping slice of the
-// CSV. ziya07 has no unit/equipment column of its own (unlike CMAPSS, which
-// genuinely has 100 distinct engine units) -- so "multiple engines" here
-// means each engine gets a distinct contiguous chunk of the SAME real
-// dataset and loops within just that chunk, rather than all three reading
-// the same rows dressed up with a fake multiplier.
-function assignSegments(rowCount) {
-  const segLen = Math.floor(rowCount / ENGINES.length);
-  return ENGINES.map((engine, i) => {
-    const start = i * segLen;
-    const end   = (i === ENGINES.length - 1) ? rowCount : start + segLen; // last engine absorbs the remainder
-    return { id: engine.id, start, end };
+function isSyntheticAnomalyDataset(rows) {
+  return rows.length > 0 && Object.hasOwn(rows[0], 'engine_id')
+    && Object.hasOwn(rows[0], 'is_anomaly') && Object.hasOwn(rows[0], 'event_id');
+}
+
+function prepareReplay(rows) {
+  usesSourceLabels = isSyntheticAnomalyDataset(rows);
+  if (!usesSourceLabels) {
+    const engineCount = Math.min(ENGINE_COUNT, rows.length);
+    const engines = Array.from({ length: engineCount }, (_, i) => ({
+      id: `ENGINE-${i + 1}`, name: `Engine ${i + 1}`, source_engine_id: null,
+    }));
+    engines.forEach(registerEngine);
+    const segLen = Math.floor(rows.length / engines.length);
+    engines.forEach((engine, i) => {
+      const start = i * segLen;
+      const end = i === engines.length - 1 ? rows.length : start + segLen;
+      engineState[engine.id].rows = rows.slice(start, end);
+    });
+    return engines;
+  }
+
+  const byId = new Map();
+  for (const row of rows) {
+    const sourceId = String(row.engine_id || '').trim();
+    const record = Number(row.record);
+    if (!sourceId || !Number.isFinite(record) || !Number.isFinite(Date.parse(row.timestamp))) continue;
+    if (!byId.has(sourceId)) byId.set(sourceId, { records: new Map(), timestamps: new Set() });
+    const engineRows = byId.get(sourceId);
+    // Ignore repeated source timestamps for one engine.
+    if (!engineRows.timestamps.has(row.timestamp)) {
+      engineRows.timestamps.add(row.timestamp);
+      engineRows.records.set(record, row);
+    }
+  }
+  const sourceIds = [...byId.keys()].sort((a, b) => Number(a) - Number(b));
+  const selectedIds = sourceIds.slice(0, ENGINE_COUNT);
+  for (const sourceId of selectedIds) {
+    const engine = { id: `ENGINE-${sourceId}`, name: `Engine ${sourceId}`, source_engine_id: Number(sourceId) };
+    registerEngine(engine);
+    engineState[engine.id].rows = [...byId.get(sourceId).records.values()]
+      .sort((a, b) => Number(a.record) - Number(b.record));
+  }
+  console.log(`[Simulator] Registered ${selectedIds.length} independent source engines.`);
+  return ENGINES;
+}
+
+function createSourceEventAlert(engine, reading, io) {
+  if (!reading.is_anomaly || reading.event_id < 0) return null;
+  const state = engineState[engine.id];
+  const eventKey = `${reading.event_id}:${reading.anomaly_type}`;
+  if (state.emittedEventIds.has(eventKey)) return null;
+  state.emittedEventIds.add(eventKey);
+  const label = reading.anomaly_type || 'labelled anomaly';
+  const alert = createAlert({
+    equipment_id: engine.id, severity: 'ANOMALY',
+    anomaly_score: Number(reading.anomaly_severity) || 1,
+    message: `Synthetic dataset event: ${label} (event ${reading.event_id}).`,
+    feature_snapshot: {
+      source_engine_id: reading.source_engine_id, source_record: reading.source_record,
+      source_timestamp: reading.source_timestamp, anomaly_type: label,
+      anomaly_severity: reading.anomaly_severity,
+    },
+    top_anomalous_features: [label, `severity ${reading.anomaly_severity}`],
   });
+  fleetStatus[engine.id] = {
+    ...fleetStatus[engine.id], severity: 'ANOMALY',
+    anomaly_score: Number(reading.anomaly_severity) || 1,
+    message: alert.message, last_reading: reading, reading_count: state.readingCount,
+  };
+  io.emit('new_alert', alert);
+  return alert;
 }
 
 // ── Call Flask predictor ──────────────────────────────────────────────────────
@@ -181,6 +239,8 @@ function startSimulator({ io, flaskUrl, dataPath }) {
   console.log(`[Simulator] Starting — data: ${dataPath}`);
 
   const allRows = [];
+  const selectedSourceIds = new Set();
+  let syntheticRows = false;
   if (!fs.existsSync(dataPath)) {
     console.error(`[Simulator] Data file not found: ${dataPath}`);
     return;
@@ -188,37 +248,45 @@ function startSimulator({ io, flaskUrl, dataPath }) {
 
   fs.createReadStream(dataPath)
     .pipe(csv())
-    .on('data', row => allRows.push(row))
+    .on('data', row => {
+      if (Object.hasOwn(row, 'engine_id') && Object.hasOwn(row, 'is_anomaly')) {
+        syntheticRows = true;
+        const sourceId = String(row.engine_id || '').trim();
+        if (!sourceId) return;
+        if (!selectedSourceIds.has(sourceId) && selectedSourceIds.size >= ENGINE_COUNT) return;
+        selectedSourceIds.add(sourceId);
+      }
+      allRows.push(row);
+    })
     .on('end', () => {
-      console.log(`[Simulator] Loaded ${allRows.length} rows from CSV`);
+      console.log(`[Simulator] Loaded ${allRows.length} replay rows${syntheticRows ? ` for ${selectedSourceIds.size} source engines (cap ${ENGINE_COUNT})` : ''}.`);
       replayRows(allRows, io, flaskUrl);
-    });
+    })
+    .on('error', err => console.error(`[Simulator] Could not read ${dataPath}: ${err.message}`));
 }
 
 function replayRows(rows, io, flaskUrl) {
-  if (rows.length < ENGINES.length) {
-    console.error(`[Simulator] Only ${rows.length} rows loaded -- not enough to give each of ${ENGINES.length} engines its own segment.`);
+  ENGINES = [];
+  Object.keys(engineState).forEach(id => delete engineState[id]);
+  Object.keys(fleetStatus).forEach(id => delete fleetStatus[id]);
+  const engines = prepareReplay(rows);
+  if (!engines.length) {
+    console.error('[Simulator] No valid engine rows found in replay dataset.');
     return;
   }
 
-  const segments = assignSegments(rows.length);
-  segments.forEach(seg => {
-    const state = engineState[seg.id];
-    state.segment = seg;
-    state.cursor  = seg.start;
-    console.log(`[Simulator] ${seg.id} <- rows [${seg.start}, ${seg.end}) of ${rows.length}`);
-  });
-
   const tick = async () => {
-    for (const engine of ENGINES) {
-      const state    = engineState[engine.id];
-      const rawRow   = rows[state.cursor];
-      const reading  = mapReading(rawRow);
-
-      // Advance this engine's cursor within its OWN real segment only --
-      // loops back to its own start, never bleeds into another engine's rows.
-      state.cursor++;
-      if (state.cursor >= state.segment.end) state.cursor = state.segment.start;
+    for (const engine of engines) {
+      const state = engineState[engine.id];
+      if (state.cursor === 0 && state.readingCount > 0) {
+        state.buffer = [];
+        state.emittedEventIds.clear();
+      }
+      const loopTimestamp = new Date().toISOString();
+      const reading = mapReading(state.rows[state.cursor]);
+      reading.timestamp = loopTimestamp;
+      reading.recorded_at = loopTimestamp;
+      state.cursor = (state.cursor + 1) % state.rows.length;
 
       state.buffer.push(reading);
       if (state.pendingInjectedReadings > 0) {
@@ -231,20 +299,30 @@ function replayRows(rows, io, flaskUrl) {
       state.readingCount++;
 
       if (database.isDatabaseEnabled()) {
-        database.saveReading(engine.id, engine.name, reading)
+        database.saveReading(engine.id, engine.name, reading, engine.source_engine_id)
           .catch(err => console.error('[Database] Could not persist reading:', err.message));
       }
 
       io.emit('sensor_reading', {
         equipment_id: engine.id,
         name:         engine.name,
+        source_engine_id: engine.source_engine_id,
         reading,
         buffer_size:  state.buffer.length,
       });
 
-      createHighLimitAlert(engine, reading, io);
+      if (usesSourceLabels) createSourceEventAlert(engine, reading, io);
+      else createHighLimitAlert(engine, reading, io);
+      if (usesSourceLabels && !reading.is_anomaly) {
+        fleetStatus[engine.id] = {
+          ...fleetStatus[engine.id],
+          severity: 'NORMAL', anomaly_score: 0,
+          message: 'No labelled anomaly in the current source reading.',
+          last_reading: reading, reading_count: state.readingCount,
+        };
+      }
 
-      if (state.buffer.length >= WINDOW_SIZE) {
+      if (!usesSourceLabels && state.buffer.length >= WINDOW_SIZE) {
         const result = await callPredictor(engine.id, state.buffer, flaskUrl);
 
         if (result) {
@@ -257,12 +335,13 @@ function replayRows(rows, io, flaskUrl) {
             : result.message;
 
           if (database.isDatabaseEnabled()) {
-            database.savePrediction(engine.id, engine.name, result)
+            database.savePrediction(engine.id, engine.name, result, engine.source_engine_id)
               .catch(err => console.error('[Database] Could not persist prediction:', err.message));
           }
 
           fleetStatus[engine.id] = {
             ...fleetStatus[engine.id],
+            source_engine_id: engine.source_engine_id,
             severity:      effectiveSeverity,
             anomaly_score: highBreaches.length ? 1 : result.anomaly_score,
             message:       effectiveMessage,

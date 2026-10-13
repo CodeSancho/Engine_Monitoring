@@ -303,6 +303,24 @@ def predict_rul_demo():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/predict_component_rul', methods=['POST'])
+def predict_component_rul():
+    """Predict five component lifetimes over a held-out synthetic trajectory."""
+    try:
+        from models.component_rul import predict_trajectory
+
+        body = request.get_json(force=True)
+        records = body.get('records', [])
+        sample_points = max(2, int(body.get('sample_points', 48)))
+        step = max(1, int(np.ceil(max(1, len(records) - 5) / sample_points)))
+        result = predict_trajectory(records, step=step)
+        result['engine_id'] = body.get('engine_id', result['engine_id'])
+        return jsonify(result)
+    except Exception as e:
+        log.error(f"Component RUL prediction error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 
 if __name__ == '__main__':
     log.info("Starting Flask ML microservice on port 5001...")
