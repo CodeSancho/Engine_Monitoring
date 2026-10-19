@@ -176,8 +176,14 @@ def predict():
             severity = 'TAKE_NOTE'
             message = 'Anomaly detected in truck engine telemetry. Take note and monitor the engine.'
 
-        slope_features = {k: v for k, v in feats.items() if '_slope' in k}
-        top_slopes     = sorted(slope_features.items(), key=lambda x: abs(x[1]), reverse=True)[:3]
+        # Include trend drivers plus level/spread signals. A constant injected
+        # fault can have a near-zero slope, so level features must also reach
+        # the alert classifier for correct component attribution.
+        explain_features = {
+            k: v for k, v in feats.items()
+            if k.endswith(('_slope', '_std', '_range'))
+        }
+        top_slopes = sorted(explain_features.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
         top_features   = [f"{k}: {v:+.4f}" for k, v in top_slopes]
 
         processing_ms = round((time.time() - t_start) * 1000, 1)
@@ -193,12 +199,20 @@ def predict():
             'model_version': IF_METADATA['model_version'],
             'score_threshold': score_threshold,
             'feature_snapshot': {
+                'payload_mean':         round(feats.get('payload_t_mean', 0), 2),
+                'speed_mean':            round(feats.get('speed_kmh_mean', 0), 2),
+                'resistance_mean':       round(feats.get('total_resistance_pct_mean', 0), 2),
+                'ambient_temperature_mean': round(feats.get('ambient_C_mean', 0), 2),
                 'temperature_mean':    round(feats.get('Temperature_C_mean', 0), 2),
                 'rpm_mean':            round(feats.get('RPM_mean', 0), 2),
+                'torque_mean':         round(feats.get('Torque_Nm_mean', 0), 2),
+                'power_output_mean':   round(feats.get('Power_Output_kW_mean', 0), 2),
+                'fuel_consumption_mean': round(feats.get('Fuel_Consumption_Lph_mean', 0), 2),
                 'vibration_magnitude': round(feats.get('vibration_magnitude', 0), 4),
                 'fuel_efficiency_km_per_l_mean': round(feats.get('Fuel_Efficiency_km_per_L_mean', 0), 3),
                 'exhaust_temperature_mean': round(feats.get('Exhaust_Temp_C_mean', 0), 2),
                 'oil_pressure_mean': round(feats.get('Oil_Pressure_kPa_mean', 0), 2),
+                'boost_pressure_mean': round(feats.get('Boost_Pressure_kPa_mean', 0), 2),
                 'temperature_slope':   round(feats.get('Temperature_C_slope', 0), 6),
             },
             'note': ('Component RUL is served separately from the synthetic component '
