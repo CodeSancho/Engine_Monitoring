@@ -188,10 +188,16 @@ def _ensure_models():
         stat = os.stat(DATA_PATH) if os.path.isfile(DATA_PATH) else None
         dataset_signature = (stat.st_size, stat.st_mtime_ns) if stat else None
         if os.path.isfile(artifact_path):
-            artifact = joblib.load(artifact_path)
-            if artifact.get("version") == MODEL_VERSION and artifact.get("dataset_signature") == dataset_signature:
-                _MODELS, _MODEL_INFO = artifact["models"], artifact["info"]
-                return _MODELS, _MODEL_INFO
+            try:
+                artifact = joblib.load(artifact_path)
+                if artifact.get("version") == MODEL_VERSION and artifact.get("dataset_signature") == dataset_signature:
+                    _MODELS, _MODEL_INFO = artifact["models"], artifact["info"]
+                    return _MODELS, _MODEL_INFO
+            except (ImportError, ModuleNotFoundError, AttributeError, ValueError, EOFError) as exc:
+                # A previous sklearn/joblib artifact may reference private
+                # modules that no longer exist (for example sklearn._loss).
+                # Treat it as stale and rebuild using the current estimator.
+                print(f"[component_rul] Ignoring incompatible artifact: {exc}")
         _MODELS, _MODEL_INFO = _fit_models()
         joblib.dump({"version": MODEL_VERSION, "dataset_signature": dataset_signature, "models": _MODELS, "info": _MODEL_INFO}, artifact_path, compress=3)
     return _MODELS, _MODEL_INFO
