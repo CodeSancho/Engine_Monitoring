@@ -54,7 +54,7 @@ def inject_raw_level_anomalies(raw_df: pd.DataFrame, n_windows: int, seed: int =
             window_raw['Torque_Nm'] += severity * stds['Torque_Nm']
             window_raw['RPM'] -= severity * stds['RPM']
 
-        window_raw['Fault_Condition'] = 0  # keep last row "normal" so it survives the normal_only filter
+        window_raw['Fault_Condition'] = 0
         window_raw['_injected_fault_type'] = ftype
         window_raw['_window_id'] = f"{ftype}_{anchor_time}"
         perturbed_frames.append(window_raw)
@@ -67,7 +67,7 @@ def inject_raw_level_anomalies(raw_df: pd.DataFrame, n_windows: int, seed: int =
         feats_df = _build_ziya_time_windows(wdf, window_minutes=30, normal_only=False)
         if len(feats_df) == 0:
             continue
-        feats_df = feats_df.tail(1).copy()  # only the fully-perturbed window
+        feats_df = feats_df.tail(1).copy()
         feats_df['injected_fault_type'] = wdf['_injected_fault_type'].iloc[0]
         all_windows_feats.append(feats_df)
 
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     print(f"Generated {len(anomalies)} internally-consistent synthetic anomaly windows")
     print()
 
-    # Verify consistency this time
+
     row = anomalies[anomalies['injected_fault_type']=='overheat'].iloc[[0]]
     print(f"Overheat example: Temperature_C_mean={row['Temperature_C_mean'].values[0]:.2f}, "
           f"thermal_load_per_rpm={row['thermal_load_per_rpm'].values[0]:.6f}")

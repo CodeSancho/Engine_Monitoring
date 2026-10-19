@@ -1,5 +1,5 @@
--- Add stable source identity to existing equipment rows.
--- Safe to re-run against PostgreSQL/Supabase.
+
+
 alter table public.equipment
   add column if not exists source_device_id text,
   add column if not exists status text not null default 'active';

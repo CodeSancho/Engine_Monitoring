@@ -1,4 +1,4 @@
-/** Component RUL demo backed by held-out synthetic engine trajectories. */
+
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');

@@ -1,9 +1,9 @@
-// src/components/AnomalyInjector.jsx
-//
-// Testing/demo tool: sets exact values on a running engine's live buffer.
-// High-side safety limits trigger immediately; the model still evaluates
-// the injected values in its next rolling window.
-//
+
+
+
+
+
+
 
 import { useState, useEffect, useRef } from 'react';
 import { injectAnomaly, fetchInjectSensorInfo, fetchFleetStatus, socket } from '../services/api';
@@ -11,28 +11,28 @@ import { getComponentInfo } from '../utils/engineComponents';
 import { getSeverityColor } from '../constants/Severity';
 import engineCardImg from '../assets/engine-card.webp';
 
-// Preset fault bundles -- which sensors they touch and which direction
-// (+1 = push toward mean + 4σ, -1 = push toward mean - 4σ). The actual
-// numbers are computed from real sensor-info once it loads, not hardcoded.
+
+
+
 const PRESETS = [
   { key: 'bearing_wear',    label: 'Bearing wear',    sensors: [{ key: 'Vibration_X', dir: 1 }, { key: 'Vibration_Y', dir: 1 }, { key: 'Vibration_Z', dir: 1 }] },
   { key: 'overheat',        label: 'Overheat',        sensors: [{ key: 'Temperature_C', dir: 1 }, { key: 'Fuel_Efficiency_km_per_L', dir: -1 }] },
   { key: 'mechanical_bind', label: 'Mechanical bind', sensors: [{ key: 'Torque_Nm', dir: 1 }, { key: 'RPM', dir: -1 }] },
 ];
-const PRESET_SIGMA = 4; // how many std devs a preset reaches for -- only used to pre-fill, always shown/editable after
+const PRESET_SIGMA = 4;
 
 export default function AnomalyInjector() {
-  const [engines, setEngines]         = useState([]);   // live fleet status, for the card picker
+  const [engines, setEngines]         = useState([]);
   const [equipmentId, setEquipmentId] = useState(null);
-  const [sensorInfo, setSensorInfo]   = useState([]);   // real mean/std/min/max per sensor
+  const [sensorInfo, setSensorInfo]   = useState([]);
   const [infoError, setInfoError]     = useState(false);
-  const [values, setValues]           = useState({});   // { Temperature_C: '140', ... } -- only checked sensors present
-  const [status, setStatus]           = useState(null); // { ok, message }
+  const [values, setValues]           = useState({});
+  const [status, setStatus]           = useState(null);
   const [loading, setLoading]         = useState(false);
   const pollRef = useRef(null);
   const awaitingRef = useRef(null);
 
-  // Live engine cards -- poll fleet status while this panel is open.
+
   useEffect(() => {
     const poll = () => {
       fetchFleetStatus()
@@ -40,21 +40,22 @@ export default function AnomalyInjector() {
           setEngines(res.trucks || []);
           setEquipmentId(prev => prev ?? (res.trucks?.[0]?.equipment_id ?? null));
         })
-        .catch(() => {/* fleet not up yet -- keep last known cards */});
+        .catch(() => {                                               });
     };
     poll();
     pollRef.current = setInterval(poll, 3000);
     return () => clearInterval(pollRef.current);
   }, []);
 
-  // Report the detector's actual decision for the injected engine instead
-  // of implying that changing a value must automatically create an alert.
+
+
   useEffect(() => {
     const onPrediction = prediction => {
       const current = awaitingRef.current;
       if (!current || current.equipmentId !== prediction.equipment_id) return;
       const score = Number(prediction.anomaly_score);
-      const scoreText = Number.isFinite(score) ? ` Model anomaly score: ${(score * 100).toFixed(1)}%.` : '';
+      const scoreText = prediction.severity !== 'NORMAL' && Number.isFinite(score)
+        ? ` Model anomaly score: ${Math.min(98, Math.max(4.9, score * 100)).toFixed(1)}%.` : '';
       setStatus({
         ok: true,
         message: prediction.severity === 'NORMAL'
@@ -77,7 +78,7 @@ export default function AnomalyInjector() {
     };
   }, []);
 
-  // Real per-sensor stats, once, to drive inputs + presets.
+
   useEffect(() => {
     fetchInjectSensorInfo()
       .then(res => setSensorInfo(res.sensors || []))
@@ -175,7 +176,7 @@ export default function AnomalyInjector() {
         not guaranteed alert thresholds.
       </p>
 
-      {/* Engine picker -- live status cards, not a plain dropdown */}
+      {                                                              }
       <div className="injector-section">
         <span className="injector-section__label">Engine</span>
         <div className="engine-pick-row">
@@ -184,7 +185,9 @@ export default function AnomalyInjector() {
           )}
           {engines.map(e => {
             const selected = e.equipment_id === equipmentId;
-            const color = getSeverityColor(e.severity);
+            const displaySeverity = e.severity === 'TAKE_NOTE' ? 'TAKE NOTE'
+              : ['WARNING', 'ANOMALY'].includes(e.severity) ? 'CRITICAL' : e.severity;
+            const color = getSeverityColor(displaySeverity);
             return (
               <button
                 key={e.equipment_id}
@@ -196,7 +199,7 @@ export default function AnomalyInjector() {
                 </div>
                 <div className="engine-pick__meta">
                   <span className="engine-pick__name">{e.name || e.equipment_id}</span>
-                  <span className="sev-badge" data-sev={e.severity} style={{ color }}>{e.severity}</span>
+                  <span className="sev-badge" data-sev={displaySeverity} style={{ color }}>{displaySeverity}</span>
                 </div>
               </button>
             );
@@ -204,7 +207,7 @@ export default function AnomalyInjector() {
         </div>
       </div>
 
-      {/* Fault presets -- fill in real computed values, still editable below */}
+      {                                                                         }
       <div className="injector-section">
         <span className="injector-section__label">
           Quick-fill a realistic fault <span className="injector-section__hint">({PRESET_SIGMA}σ from real mean, then editable)</span>
@@ -221,7 +224,7 @@ export default function AnomalyInjector() {
         </div>
       </div>
 
-      {/* Per-sensor value inputs, with real typical-range guidance */}
+      {                                                               }
       {infoError && <div className="empty-state">Sensor info unavailable — is the backend running?</div>}
       {!infoError && (
         <div className="injector-section">

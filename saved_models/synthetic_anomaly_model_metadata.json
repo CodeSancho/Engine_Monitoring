@@ -1,5 +1,5 @@
 {
-  "model_version": "synthetic-anomaly-if-v2-all-training-windows",
+  "model_version": "synthetic-anomaly-isolation-forest-v8-validation-tuning",
   "dataset": "synthetic_anomaly_records.csv",
   "dataset_sha256": "c73e378a2af31c3369f87ccf3295d644973b9e492bcdaf47c503a6b606e0a932",
   "sensor_columns": [
@@ -22,32 +22,8 @@
   ],
   "window_size_readings": 30,
   "window_step_readings": 5,
-  "feature_count": 99,
+  "feature_count": 49,
   "feature_columns": [
-    "payload_t_mean",
-    "payload_t_std",
-    "payload_t_min",
-    "payload_t_max",
-    "payload_t_slope",
-    "payload_t_range",
-    "speed_kmh_mean",
-    "speed_kmh_std",
-    "speed_kmh_min",
-    "speed_kmh_max",
-    "speed_kmh_slope",
-    "speed_kmh_range",
-    "total_resistance_pct_mean",
-    "total_resistance_pct_std",
-    "total_resistance_pct_min",
-    "total_resistance_pct_max",
-    "total_resistance_pct_slope",
-    "total_resistance_pct_range",
-    "ambient_C_mean",
-    "ambient_C_std",
-    "ambient_C_min",
-    "ambient_C_max",
-    "ambient_C_slope",
-    "ambient_C_range",
     "Temperature_C_mean",
     "Temperature_C_std",
     "Temperature_C_min",
@@ -72,36 +48,12 @@
     "Torque_Nm_max",
     "Torque_Nm_slope",
     "Torque_Nm_range",
-    "Power_Output_kW_mean",
-    "Power_Output_kW_std",
-    "Power_Output_kW_min",
-    "Power_Output_kW_max",
-    "Power_Output_kW_slope",
-    "Power_Output_kW_range",
-    "Fuel_Consumption_Lph_mean",
-    "Fuel_Consumption_Lph_std",
-    "Fuel_Consumption_Lph_min",
-    "Fuel_Consumption_Lph_max",
-    "Fuel_Consumption_Lph_slope",
-    "Fuel_Consumption_Lph_range",
-    "Fuel_Efficiency_km_per_L_mean",
-    "Fuel_Efficiency_km_per_L_std",
-    "Fuel_Efficiency_km_per_L_min",
-    "Fuel_Efficiency_km_per_L_max",
-    "Fuel_Efficiency_km_per_L_slope",
-    "Fuel_Efficiency_km_per_L_range",
     "Oil_Pressure_kPa_mean",
     "Oil_Pressure_kPa_std",
     "Oil_Pressure_kPa_min",
     "Oil_Pressure_kPa_max",
     "Oil_Pressure_kPa_slope",
     "Oil_Pressure_kPa_range",
-    "Boost_Pressure_kPa_mean",
-    "Boost_Pressure_kPa_std",
-    "Boost_Pressure_kPa_min",
-    "Boost_Pressure_kPa_max",
-    "Boost_Pressure_kPa_slope",
-    "Boost_Pressure_kPa_range",
     "Vibration_X_mean",
     "Vibration_X_std",
     "Vibration_X_min",
@@ -120,9 +72,7 @@
     "Vibration_Z_max",
     "Vibration_Z_slope",
     "Vibration_Z_range",
-    "vibration_magnitude",
-    "power_efficiency",
-    "thermal_load_per_rpm"
+    "vibration_magnitude"
   ],
   "training_engine_ids": [
     1,
@@ -230,11 +180,315 @@
     91,
     100
   ],
-  "contamination": "auto",
-  "threshold_policy": "validation F1 maximized subject to a 5% normal false-alarm cap",
-  "decision_threshold_score_samples": -0.4966735055942454,
-  "validation_false_alarm_rate": 0.029939,
-  "validation_f1": 0.330757,
-  "score_scale": 0.03343433103767035,
-  "fitted_on_all_training_windows_without_labels": true
+  "model_class": "IsolationForest",
+  "model_type": "isolation_forest",
+  "selected_feature_set": "mechanical_sensors",
+  "model_parameters": {
+    "n_estimators": 200,
+    "max_samples": 1024
+  },
+  "validation_model_comparisons": [
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "all",
+      "feature_count": 99,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 256
+      },
+      "validation_precision": 0.437075,
+      "validation_recall": 0.438567,
+      "validation_f1": 0.437819,
+      "validation_false_alarm_rate": 0.044887,
+      "threshold": -0.4788480612969588
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "all",
+      "feature_count": 99,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 512
+      },
+      "validation_precision": 0.443878,
+      "validation_recall": 0.445392,
+      "validation_f1": 0.444634,
+      "validation_false_alarm_rate": 0.044345,
+      "threshold": -0.46421351512094217
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "all",
+      "feature_count": 99,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 1024
+      },
+      "validation_precision": 0.506803,
+      "validation_recall": 0.508532,
+      "validation_f1": 0.507666,
+      "validation_false_alarm_rate": 0.039327,
+      "threshold": -0.44583060326814883
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_derived",
+      "feature_count": 19,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 256
+      },
+      "validation_precision": 0.279801,
+      "validation_recall": 0.288396,
+      "validation_f1": 0.284034,
+      "validation_false_alarm_rate": 0.058991,
+      "threshold": -0.5163090000543319
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_derived",
+      "feature_count": 19,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 512
+      },
+      "validation_precision": 0.304422,
+      "validation_recall": 0.305461,
+      "validation_f1": 0.30494,
+      "validation_false_alarm_rate": 0.055465,
+      "threshold": -0.5027879538564339
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_derived",
+      "feature_count": 19,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 1024
+      },
+      "validation_precision": 0.326531,
+      "validation_recall": 0.327645,
+      "validation_f1": 0.327087,
+      "validation_false_alarm_rate": 0.053702,
+      "threshold": -0.4840890466943649
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "level_spread",
+      "feature_count": 67,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 256
+      },
+      "validation_precision": 0.420068,
+      "validation_recall": 0.421502,
+      "validation_f1": 0.420784,
+      "validation_false_alarm_rate": 0.046244,
+      "threshold": -0.48616428176907545
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "level_spread",
+      "feature_count": 67,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 512
+      },
+      "validation_precision": 0.481293,
+      "validation_recall": 0.482935,
+      "validation_f1": 0.482112,
+      "validation_false_alarm_rate": 0.041362,
+      "threshold": -0.4680550329098092
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "level_spread",
+      "feature_count": 67,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 1024
+      },
+      "validation_precision": 0.465986,
+      "validation_recall": 0.467577,
+      "validation_f1": 0.46678,
+      "validation_false_alarm_rate": 0.042582,
+      "threshold": -0.4523512122174024
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_std_slope",
+      "feature_count": 51,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 256
+      },
+      "validation_precision": 0.260035,
+      "validation_recall": 0.254266,
+      "validation_f1": 0.257118,
+      "validation_false_alarm_rate": 0.057499,
+      "threshold": -0.5140105182588389
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_std_slope",
+      "feature_count": 51,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 512
+      },
+      "validation_precision": 0.287958,
+      "validation_recall": 0.28157,
+      "validation_f1": 0.284728,
+      "validation_false_alarm_rate": 0.05533,
+      "threshold": -0.49406485315809623
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_std_slope",
+      "feature_count": 51,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 1024
+      },
+      "validation_precision": 0.287415,
+      "validation_recall": 0.288396,
+      "validation_f1": 0.287905,
+      "validation_false_alarm_rate": 0.056821,
+      "threshold": -0.4754795258784789
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_range_slope",
+      "feature_count": 51,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 256
+      },
+      "validation_precision": 0.263605,
+      "validation_recall": 0.264505,
+      "validation_f1": 0.264055,
+      "validation_false_alarm_rate": 0.05872,
+      "threshold": -0.505673802428611
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_range_slope",
+      "feature_count": 51,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 512
+      },
+      "validation_precision": 0.323129,
+      "validation_recall": 0.324232,
+      "validation_f1": 0.32368,
+      "validation_false_alarm_rate": 0.053973,
+      "threshold": -0.4774702471766189
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mean_range_slope",
+      "feature_count": 51,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 1024
+      },
+      "validation_precision": 0.32483,
+      "validation_recall": 0.325939,
+      "validation_f1": 0.325383,
+      "validation_false_alarm_rate": 0.053838,
+      "threshold": -0.46463530744251225
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "fault_sensors",
+      "feature_count": 75,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 256
+      },
+      "validation_precision": 0.54932,
+      "validation_recall": 0.551195,
+      "validation_f1": 0.550256,
+      "validation_false_alarm_rate": 0.035937,
+      "threshold": -0.480923005724701
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "fault_sensors",
+      "feature_count": 75,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 512
+      },
+      "validation_precision": 0.55102,
+      "validation_recall": 0.552901,
+      "validation_f1": 0.551959,
+      "validation_false_alarm_rate": 0.035801,
+      "threshold": -0.4628837861897064
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "fault_sensors",
+      "feature_count": 75,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 1024
+      },
+      "validation_precision": 0.565445,
+      "validation_recall": 0.552901,
+      "validation_f1": 0.559103,
+      "validation_false_alarm_rate": 0.033767,
+      "threshold": -0.44576795500057886
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mechanical_sensors",
+      "feature_count": 49,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 256
+      },
+      "validation_precision": 0.639456,
+      "validation_recall": 0.641638,
+      "validation_f1": 0.640545,
+      "validation_false_alarm_rate": 0.02875,
+      "threshold": -0.4716651860867354
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mechanical_sensors",
+      "feature_count": 49,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 512
+      },
+      "validation_precision": 0.681973,
+      "validation_recall": 0.6843,
+      "validation_f1": 0.683135,
+      "validation_false_alarm_rate": 0.025359,
+      "threshold": -0.4513803868996294
+    },
+    {
+      "model_type": "isolation_forest",
+      "feature_set": "mechanical_sensors",
+      "feature_count": 49,
+      "model_parameters": {
+        "n_estimators": 200,
+        "max_samples": 1024
+      },
+      "validation_precision": 0.70068,
+      "validation_recall": 0.703072,
+      "validation_f1": 0.701874,
+      "validation_false_alarm_rate": 0.023868,
+      "threshold": -0.42955192256273883
+    }
+  ],
+  "threshold_policy": "Validation selection first prefers precision and recall both at least 0.70, then maximizes the lower of precision and recall, followed by F1 and lower false-alarm rate; test engines are reserved for final evaluation",
+  "decision_threshold": -0.42955192256273883,
+  "decision_threshold_score_samples": -0.42955192256273883,
+  "validation_false_alarm_rate": 0.023868,
+  "validation_f1": 0.701874,
+  "score_scale": 0.023994157178342124,
+  "fit_population": "all training windows; labels excluded from model fitting",
+  "fit_training_windows": 23880
 }

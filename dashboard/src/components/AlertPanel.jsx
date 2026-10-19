@@ -1,14 +1,17 @@
-// src/components/AlertPanel.jsx
 
-import { acknowledgeAlert } from '../services/api';
+
+import { useState } from 'react';
+import { acknowledgeAlert, acknowledgeAllAlerts } from '../services/api';
 import { getComponentInfo } from '../utils/engineComponents';
 import { getSeverityColor } from '../constants/Severity';
 import { downloadCsv } from '../utils/csvExport';
 
-function AlertCard({ alert, onAcknowledge, onSelectTruck }) {
+function AlertCard({ alert, engineLabel, onAcknowledge, onSelectTruck }) {
   const color = getSeverityColor(alert.severity);
   const time  = new Date(alert.timestamp).toLocaleTimeString();
   const snap  = alert.feature_snapshot || {};
+  const severityLabel = alert.severity === 'TAKE_NOTE' ? 'TAKE NOTE'
+    : ['WARNING', 'ANOMALY'].includes(alert.severity) ? 'CRITICAL' : alert.severity;
   const topFeature = alert.top_anomalous_features?.[0];
   const comp = topFeature ? getComponentInfo(topFeature) : null;
 
@@ -23,15 +26,15 @@ function AlertCard({ alert, onAcknowledge, onSelectTruck }) {
     <div className="alert-card" style={{ borderLeftColor: color }}>
       <div className="alert-card__header">
         <div className="alert-card__left">
-          <span className="sev-badge" data-sev={alert.severity} style={{ color }}>{alert.severity}</span>
+          <span className="sev-badge" data-sev={severityLabel} style={{ color }}>{severityLabel}</span>
           <span className="alert-card__equip" onClick={() => onSelectTruck(alert.equipment_id)}>
-            {alert.equipment_id}
+            {engineLabel || alert.equipment_id}
           </span>
           <span className="alert-card__time">{time}</span>
         </div>
         <div className="alert-card__scores">
           <span className="score-chip" style={{ color }}>
-            Score: {(alert.anomaly_score * 100).toFixed(0)}%
+            Score: {Math.min(98, Math.max(4.9, Number(alert.anomaly_score) * 100 || 0)).toFixed(1)}%
           </span>
         </div>
       </div>
@@ -66,13 +69,24 @@ function AlertCard({ alert, onAcknowledge, onSelectTruck }) {
   );
 }
 
-export default function AlertPanel({ alerts, onAcknowledge, onSelectTruck }) {
+export default function AlertPanel({ alerts, fleet = [], onAcknowledge, onSelectTruck }) {
+  const [clearing, setClearing] = useState(false);
   const active = alerts.filter(a => !a.acknowledged);
-  // FIX: severity is two-tier now (NORMAL/ANOMALY); only ANOMALY alerts
-  // are ever created, but count generically so this doesn't silently
-  // break again if a new tier is added later.
+
+
+
   const counts = {};
   active.forEach(a => { counts[a.severity] = (counts[a.severity] || 0) + 1; });
+
+  async function handleClearAll() {
+    setClearing(true);
+    try {
+      const result = await acknowledgeAllAlerts();
+      (result.alerts || []).forEach(alert => onAcknowledge(alert.id));
+    } finally {
+      setClearing(false);
+    }
+  }
 
   function handleExport() {
     const rows = active.map(a => ({
@@ -105,9 +119,14 @@ export default function AlertPanel({ alerts, onAcknowledge, onSelectTruck }) {
             ))}
           </div>
           {active.length > 0 && (
+            <>
+            <button className="btn-acknowledge" onClick={handleClearAll} disabled={clearing}>
+              {clearing ? 'Clearing…' : 'Clear all'}
+            </button>
             <button className="btn-secondary" onClick={handleExport}>
               Export CSV
             </button>
+            </>
           )}
         </div>
       </div>
@@ -121,6 +140,7 @@ export default function AlertPanel({ alerts, onAcknowledge, onSelectTruck }) {
         )
         : active.map(a => (
           <AlertCard key={a.id} alert={a}
+            engineLabel={fleet.find(engine => engine.equipment_id === a.equipment_id)?.name}
             onAcknowledge={onAcknowledge} onSelectTruck={onSelectTruck} />
         ))
       }

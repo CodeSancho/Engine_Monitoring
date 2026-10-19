@@ -13,6 +13,14 @@ export default function ModelInfo() {
   if (!info) return <div className="model-info"><div className="empty-state">Loading model information…</div></div>;
 
   const model = info.isolation_forest || {};
+  const componentRul = info.component_rul || {};
+  const componentMetrics = [
+    ['Main bearings', componentRul.metrics?.main_bearings?.test],
+    ['Fuel injectors', componentRul.metrics?.fuel_injectors?.test],
+    ['Turbocharger', componentRul.metrics?.turbocharger?.test],
+    ['Cooling system', componentRul.metrics?.cooling_system?.test],
+    ['Air filter', componentRul.metrics?.air_filter?.test],
+  ];
   return (
     <div className="model-info">
       <h2 className="section-title">Model information</h2>
@@ -34,17 +42,26 @@ export default function ModelInfo() {
             <MetricRow label="Features per window" value={model.feature_count ?? '—'} />
           </div>
           <div className="model-card__note">
-            Fit on all training windows without labels, as an unsupervised detector. Validation labels are used only to choose the alert threshold; the held-out test engines report performance. Synthetic labels do not trigger live alerts.
+            The forest is fit on training windows without labels. Validation labels select its feature/parameter configuration and decision threshold; held-out test engines report performance. Synthetic labels do not trigger live alerts.
           </div>
         </div>
         <div className="model-card">
           <div className="model-card__header" style={{ borderColor: '#B87333' }}>
             <div className="model-card__title">Component RUL</div>
-            <div className="model-card__sub">Five Random Forest regressors</div>
+            <div className="model-card__sub">Five gradient-boosting regressors</div>
             <div className="model-card__dataset">Synthetic haul-truck component histories</div>
           </div>
+          <div className="model-card__body">
+            <MetricRow label="Held-out test engines" value={componentRul.test_engines ?? '—'} />
+            {componentMetrics.map(([label, metrics]) => (
+              <div key={label}>
+                <MetricRow label={`${label} test MAE`} value={formatMonths(metrics?.mae_months)} />
+                <MetricRow label={`${label} test RMSE`} value={formatMonths(metrics?.rmse_months)} />
+              </div>
+            ))}
+          </div>
           <div className="model-card__note">
-            Each forest predicts one component’s remaining life in months from six recent records. Estimates and tree spread are available on the Component RUL page; the synthetic data does not validate real-truck accuracy.
+            Lower error is better. Each model predicts remaining life in months from recent sensor history and operating time. Results are measured on held-out synthetic test engines and do not establish real-truck accuracy.
           </div>
         </div>
       </div>
@@ -54,6 +71,10 @@ export default function ModelInfo() {
 
 function fmt(value) {
   return typeof value === 'number' ? value.toFixed(4) : '—';
+}
+
+function formatMonths(value) {
+  return typeof value === 'number' ? `${value.toFixed(3)} mo` : '—';
 }
 
 function MetricRow({ label, value }) {

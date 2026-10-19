@@ -276,6 +276,18 @@ button {
   transform: rotate(45deg); /* ANOMALY: diamond, visually distinct from the dot */
 }
 
+.sev-badge[data-sev="CRITICAL"]::before,
+.sev-badge[data-sev="WARNING"]::before,
+.sev-badge[data-sev="ANOMALY"]::before {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+.sev-badge[data-sev="TAKE_NOTE"]::before {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 20%, transparent);
+}
+
 .section-title {
   font-size: 18px;
   font-weight: 700;
@@ -1504,128 +1516,6 @@ button {
   color: var(--red-dark);
 }
 
-
-/* =========================================================
-   RUL DEMO PANEL (ModelInfo.jsx) -- CMAPSS unit selector,
-   lifespan position bar, and the recharts tooltip, all
-   restyled off the leftover dark-theme inline colors onto the
-   light theme + the flat "no card" system above.
-   ========================================================= */
-
-.rul-demo-panel {
-  padding-bottom: 4px;
-}
-
-.inject-field {
-  display: block;
-  font-size: 12px;
-  color: var(--text2);
-  margin-bottom: 6px;
-}
-
-.inject-field > span {
-  display: block;
-  font-weight: 700;
-  color: var(--text2);
-  margin-bottom: 6px;
-}
-
-.inject-field select {
-  font-size: 13px;
-  color: var(--text);
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 8px;
-}
-
-.inject-field select:focus {
-  outline: none;
-  border-color: var(--sky);
-}
-
-.inject-field select:disabled {
-  color: var(--text3);
-  background: var(--bg2);
-}
-
-/* Lifespan-position bar -- was a hardcoded dark-navy (#334155) track
-   with no CSS class; now a light track with a copper tick, matching
-   the rest of the theme. */
-.rul-lifespan-track {
-  position: relative;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--bg4);
-  margin-top: 6px;
-}
-
-.rul-lifespan-marker {
-  position: absolute;
-  top: -4px;
-  height: 12px;
-  width: 2px;
-  background: var(--copper);
-}
-
-.rul-lifespan-caption {
-  font-size: 11px;
-  color: var(--text3);
-  margin-top: 4px;
-}
-
-.rul-lifecycle-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 4px;
-  color: var(--text2);
-  font-size: 11px;
-}
-
-.rul-chart-explainer {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 10px;
-  max-width: 760px;
-  color: var(--text2);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.rul-chart-explainer strong {
-  color: var(--text);
-  font-size: 12px;
-}
-
-.rul-calendar-track {
-  position: relative;
-  height: 34px;
-  margin: 4px 8px 0 56px;
-  border-top: 3px solid var(--bg4);
-  color: var(--text2);
-  font-size: 10px;
-}
-
-.rul-calendar-track__progress {
-  position: absolute;
-  top: -3px;
-  left: 0;
-  height: 3px;
-  background: var(--copper);
-}
-
-.rul-calendar-track__start,
-.rul-calendar-track__current,
-.rul-calendar-track__end {
-  position: absolute;
-  top: 5px;
-  white-space: nowrap;
-}
-
-.rul-calendar-track__start { left: 0; }
-.rul-calendar-track__current { left: min(50%, 300px); color: var(--copper); font-weight: 700; }
-.rul-calendar-track__end { right: 0; text-align: right; }
 
 /* =========================================================
    COMPONENT RUL DASHBOARD

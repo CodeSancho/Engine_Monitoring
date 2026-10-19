@@ -1,31 +1,25 @@
-"""
-train_models.py
-Isolation Forest is fit on normal windows from the new multi-engine
-synthetic dataset. Complete engine IDs define train, validation and test
-splits, so no engine's windows leak across those sets.
+"""Train and evaluate the synthetic anomaly and component-RUL models.
+
+Complete engine IDs define train, validation and test splits so no engine's
+windows leak across those sets. Isolation Forest is fit without anomaly labels.
 """
 import os, sys, json, logging, argparse, hashlib
 import numpy as np
-import pandas as pd
 import joblib
-from sklearn.ensemble import IsolationForest, RandomForestRegressor
+from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import (precision_score, recall_score, f1_score,
-                              confusion_matrix, mean_absolute_error, mean_squared_error)
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
 
-# Portable root resolution: this file lives at ENGINE_MONTORING/training/train_models.py,
-# so the project root is exactly one directory up. Using __file__ instead of a
-# hardcoded string means "python3 training/train_models.py" works correctly
-# no matter which machine or folder path the project is checked out into.
+
+
+
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, 'python_service', 'data'))
 sys.path.insert(0, ROOT)
 
-from preprocessor import Preprocessor
-from feature_engineer import extract_cmapss_features, get_feature_cols_cmapss
 from synthetic_anomaly_pipeline import (
     SENSOR_COLUMNS as ANOMALY_SENSOR_COLUMNS,
     WINDOW_SIZE as ANOMALY_WINDOW_SIZE,
@@ -38,14 +32,12 @@ MODELS_DIR = os.path.join(ROOT, 'saved_models')
 RESULTS_DIR = os.path.join(ROOT, 'data', 'processed')
 os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
-RAW_ZIYA = os.path.join(ROOT, 'data', 'raw', 'engine_failure_dataset.csv')
 RAW_SYNTHETIC_ANOMALY = os.path.join(ROOT, 'data', 'raw', 'synthetic_anomaly_records.csv')
-RAW_CMAPSS = os.path.join(ROOT, 'data', 'raw', 'train_FD001.txt')
 
 
 def train_isolation_forest():
     log.info("=" * 60)
-    log.info("Training Isolation Forest on synthetic_anomaly_records.csv")
+    log.info("Selecting an anomaly model using synthetic training and validation engines")
     log.info("=" * 60)
 
     data = load_synthetic_anomaly_dataset(RAW_SYNTHETIC_ANOMALY)
@@ -55,65 +47,116 @@ def train_isolation_forest():
     if train.empty or validation.empty or test.empty:
         raise ValueError('Train, val and test must each contain complete sensor windows.')
 
-    feat_cols = get_anomaly_feature_columns(train)
-    scaler = MinMaxScaler()
-    # Isolation Forest is unsupervised: fit on every training window but do
-    # not pass is_anomaly or any other label into fit(). Labels are used only
-    # below for validation threshold selection and held-out evaluation.
-    X_train = scaler.fit_transform(train[feat_cols])
-    X_val = scaler.transform(validation[feat_cols])
+    all_feat_cols = get_anomaly_feature_columns(train)
     y_val = validation['is_anomaly'].to_numpy(dtype=int)
-    X_test = scaler.transform(test[feat_cols])
     y_test = test['is_anomaly'].to_numpy(dtype=int)
 
-    log.info(f"Train engines={data.loc[data.split == 'train', 'engine_id'].nunique()}, all unlabeled fit windows={len(X_train)}")
-    log.info(f"Validation engines={data.loc[data.split == 'val', 'engine_id'].nunique()}, windows={len(X_val)}, anomalies={int(y_val.sum())}")
-    log.info(f"Test engines={data.loc[data.split == 'test', 'engine_id'].nunique()}, windows={len(X_test)}, anomalies={int(y_test.sum())}")
-    log.info(f"Window size={ANOMALY_WINDOW_SIZE} readings; features={len(feat_cols)}")
+    log.info(f"Train engines={data.loc[data.split == 'train', 'engine_id'].nunique()}, unlabeled fit windows={len(train)}")
+    log.info(f"Validation engines={data.loc[data.split == 'val', 'engine_id'].nunique()}, windows={len(validation)}, anomalies={int(y_val.sum())}")
+    log.info(f"Test engines={data.loc[data.split == 'test', 'engine_id'].nunique()}, windows={len(test)}, anomalies={int(y_test.sum())}")
+    log.info(f"Window size={ANOMALY_WINDOW_SIZE} readings; candidate features={len(all_feat_cols)}")
 
-    # Fit the unsupervised forest once. Choose only its decision threshold on
-    # validation engine IDs, with a 5% false-alarm ceiling on labelled-normal
-    # windows. Labels do not enter fit(X_train).
-    best_model = IsolationForest(n_estimators=300, contamination='auto',
-                                 max_samples='auto', random_state=42, n_jobs=-1)
-    best_model.fit(X_train)
-    val_scores = best_model.score_samples(X_val)
     normal_mask = y_val == 0
-    normal_scores = val_scores[normal_mask]
-    threshold_candidates = np.unique(np.quantile(normal_scores, [0.01, 0.02, 0.03, 0.04, 0.05], method='lower'))
-    candidates = []
-    for threshold in threshold_candidates:
-        val_pred = (val_scores < threshold).astype(int)
-        false_alarm_rate = float((val_pred[normal_mask] == 1).mean())
-        val_f1 = f1_score(y_val, val_pred, zero_division=0)
-        candidates.append((float(threshold), false_alarm_rate, val_f1))
-        log.info(f"  score_threshold={threshold:.6f} validation false-alarm={false_alarm_rate:.3%} F1={val_f1:.4f}")
-
-    acceptable = [item for item in candidates if item[1] <= 0.05]
-    if acceptable:
-        decision_threshold, val_far, val_f1 = max(acceptable, key=lambda item: (item[2], -item[1]))
-    else:
-        decision_threshold, val_far, val_f1 = min(candidates, key=lambda item: (item[1], -item[2]))
-        log.warning('No candidate met the 5%% validation false-alarm target; selected lowest validation false-alarm rate.')
+    derived = {'vibration_magnitude', 'power_efficiency', 'thermal_load_per_rpm'}
+    fault_sensors = {
+        'Vibration_X', 'Vibration_Y', 'Vibration_Z', 'Temperature_C',
+        'Exhaust_Temp_C', 'Fuel_Efficiency_km_per_L', 'RPM', 'Torque_Nm',
+        'Oil_Pressure_kPa', 'Boost_Pressure_kPa', 'Power_Output_kW',
+        'Fuel_Consumption_Lph',
+    }
+    feature_sets = {
+        'all': all_feat_cols,
+        'mean_derived': [c for c in all_feat_cols if c.endswith('_mean') or c in derived],
+        'level_spread': [c for c in all_feat_cols if c.endswith(('_mean', '_std', '_min', '_max')) or c in derived],
+        'mean_std_slope': [c for c in all_feat_cols if c.endswith(('_mean', '_std', '_slope')) or c in derived],
+        'mean_range_slope': [c for c in all_feat_cols if c.endswith(('_mean', '_range', '_slope')) or c in derived],
+        'fault_sensors': [c for c in all_feat_cols if c in derived or any(
+            c.startswith(f'{sensor}_') for sensor in fault_sensors)],
+        'mechanical_sensors': [c for c in all_feat_cols if c == 'vibration_magnitude' or any(
+            c.startswith(f'{sensor}_') for sensor in (
+                'Vibration_X', 'Vibration_Y', 'Vibration_Z', 'Temperature_C',
+                'Exhaust_Temp_C', 'RPM', 'Torque_Nm', 'Oil_Pressure_kPa'))],
+    }
+    candidates = [
+        (name, cols, {'n_estimators': 200, 'max_samples': max_samples})
+        for name, cols in feature_sets.items()
+        if cols
+        for max_samples in (256, 512, 1024)
+    ]
+    comparisons = []
+    best_model = None
+    best_choice = None
+    best_val_f1 = -1.0
+    best_scaler = None
+    best_feat_cols = None
+    best_params = None
+    best_feature_set = None
+    best_selection_key = None
+    for feature_set, feat_cols, params in candidates:
+        scaler_candidate = MinMaxScaler().fit(train[feat_cols])
+        X_train_candidate = scaler_candidate.transform(train[feat_cols])
+        X_val_candidate = scaler_candidate.transform(validation[feat_cols])
+        candidate = IsolationForest(**params, contamination='auto',
+                                     random_state=42, n_jobs=-1)
+        candidate.fit(X_train_candidate)
+        scores = candidate.score_samples(X_val_candidate)
+        thresholds = np.unique(np.quantile(
+            scores, np.linspace(0.002, 0.50, 250), method='lower'))
+        options = []
+        for threshold in thresholds:
+            pred = (scores < threshold).astype(int)
+            precision = precision_score(y_val, pred, zero_division=0)
+            recall = recall_score(y_val, pred, zero_division=0)
+            far = float(pred[normal_mask].mean())
+            f1 = f1_score(y_val, pred, zero_division=0)
+            options.append((f1, min(precision, recall), -far,
+                            float(threshold), far, precision, recall))
+        selected = max(options, key=lambda item: (
+            item[5] >= 0.70 and item[6] >= 0.70,
+            item[1], item[0], item[2]))
+        comparisons.append({
+            'model_type': 'isolation_forest',
+            'feature_set': feature_set,
+            'feature_count': len(feat_cols),
+            'model_parameters': params,
+            'validation_precision': round(selected[5], 6),
+            'validation_recall': round(selected[6], 6),
+            'validation_f1': round(selected[0], 6),
+            'validation_false_alarm_rate': round(selected[4], 6),
+            'threshold': selected[3],
+        })
+        log.info(f"IsolationForest {feature_set} max_samples={params['max_samples']}: validation "
+                 f"precision={selected[5]:.4f} recall={selected[6]:.4f} "
+                 f"F1={selected[0]:.4f} FAR={selected[4]:.3%}")
+        selection_key = (
+            selected[5] >= 0.70 and selected[6] >= 0.70,
+            selected[1], selected[0], selected[2])
+        if best_selection_key is None or selection_key > best_selection_key:
+            best_model, best_choice = candidate, selected
+            best_scaler, best_feat_cols = scaler_candidate, feat_cols
+            best_params, best_feature_set = params, feature_set
+            best_val_f1 = selected[0]
+            best_selection_key = selection_key
+    scaler = best_scaler
+    feat_cols = best_feat_cols
+    X_test = scaler.transform(test[feat_cols])
+    log.info(f"Selected IsolationForest with {best_feature_set}: {len(feat_cols)} features")
+    best_val_f1, _, _, decision_threshold, best_val_far, val_precision, val_recall = best_choice
     best_model.offset_ = decision_threshold
-    best_cont = 'auto'
-
-    test_pred = (best_model.predict(X_test) == -1).astype(int)
+    normal_scores = best_model.score_samples(
+        scaler.transform(validation.loc[normal_mask, feat_cols]))
+    test_pred = (best_model.score_samples(X_test) < decision_threshold).astype(int)
     prec = precision_score(y_test, test_pred, zero_division=0)
     rec = recall_score(y_test, test_pred, zero_division=0)
     f1 = f1_score(y_test, test_pred, zero_division=0)
     cm = confusion_matrix(y_test, test_pred, labels=[0, 1])
-    score_scale = float(np.std(normal_scores)) if len(normal_scores) else 0.0
-    if not np.isfinite(score_scale) or score_scale < 1e-9:
-        score_scale = 0.1
-
     joblib.dump(best_model, f'{MODELS_DIR}/isolation_forest.pkl')
     joblib.dump(scaler, f'{MODELS_DIR}/synthetic_anomaly_scaler.pkl')
     with open(f'{MODELS_DIR}/synthetic_anomaly_feature_cols.json', 'w') as file:
         json.dump(feat_cols, file, indent=2)
     dataset_hash = hashlib.sha256(open(RAW_SYNTHETIC_ANOMALY, 'rb').read()).hexdigest()
     metadata = {
-        'model_version': 'synthetic-anomaly-if-v2-all-training-windows',
+        'model_version': 'synthetic-anomaly-isolation-forest-v8-validation-tuning',
         'dataset': os.path.basename(RAW_SYNTHETIC_ANOMALY),
         'dataset_sha256': dataset_hash,
         'sensor_columns': [column for column in data.columns if column in ANOMALY_SENSOR_COLUMNS],
@@ -124,13 +167,21 @@ def train_isolation_forest():
         'training_engine_ids': sorted(int(x) for x in data.loc[data.split == 'train', 'engine_id'].unique()),
         'validation_engine_ids': sorted(int(x) for x in data.loc[data.split == 'val', 'engine_id'].unique()),
         'test_engine_ids': sorted(int(x) for x in data.loc[data.split == 'test', 'engine_id'].unique()),
-        'contamination': best_cont,
-        'threshold_policy': 'validation F1 maximized subject to a 5% normal false-alarm cap',
+        'model_class': type(best_model).__name__,
+        'model_type': 'isolation_forest',
+        'selected_feature_set': best_feature_set,
+        'model_parameters': best_params,
+        'validation_model_comparisons': comparisons,
+        'threshold_policy': ('Validation selection first prefers precision and recall both at least 0.70, '
+                             'then maximizes the lower of precision and recall, followed by F1 and lower '
+                             'false-alarm rate; test engines are reserved for final evaluation.'),
+        'decision_threshold': decision_threshold,
         'decision_threshold_score_samples': decision_threshold,
-        'validation_false_alarm_rate': round(val_far, 6),
-        'validation_f1': round(val_f1, 6),
-        'score_scale': score_scale,
-        'fitted_on_all_training_windows_without_labels': True,
+        'validation_false_alarm_rate': round(best_val_far, 6),
+        'validation_f1': round(best_val_f1, 6),
+        'score_scale': float(max(np.std(normal_scores), 1e-9)),
+        'fit_population': 'all training windows; labels excluded from model fitting',
+        'fit_training_windows': int(len(train)),
     }
     with open(f'{MODELS_DIR}/synthetic_anomaly_model_metadata.json', 'w') as file:
         json.dump(metadata, file, indent=2)
@@ -150,17 +201,29 @@ def train_isolation_forest():
         'test_windows': len(test),
         'test_normal_windows': int((y_test == 0).sum()),
         'test_anomaly_windows': int((y_test == 1).sum()),
-        'contamination': best_cont,
-        'threshold_policy': 'validation F1 maximized subject to a 5% normal false-alarm cap',
-        'decision_threshold_score_samples': decision_threshold,
-        'validation_false_alarm_rate': round(val_far, 4),
+        'model_class': type(best_model).__name__,
+        'selected_feature_set': best_feature_set,
+        'model_type': 'isolation_forest',
+        'model_parameters': best_params,
+        'validation_model_comparisons': comparisons,
+        'threshold_policy': ('Validation selection first prefers precision and recall both at least 0.70, '
+                             'then maximizes the lower of precision and recall, followed by F1 and lower '
+                             'false-alarm rate.'),
+        'decision_threshold': decision_threshold,
+        'validation_precision': round(val_precision, 4),
+        'validation_recall': round(val_recall, 4),
+        'validation_f1': round(best_val_f1, 4),
+        'validation_false_alarm_rate': round(best_val_far, 4),
         'test_precision': round(prec, 4),
         'test_recall': round(rec, 4),
         'test_f1': round(f1, 4),
         'test_false_alarm_rate': round(float(cm[0, 1] / max(1, cm[0].sum())), 4),
         'confusion_matrix': cm.tolist(),
         'confusion_matrix_labels': ['normal', 'anomaly'],
-        'eval_methodology': 'Isolation Forest fit on all training windows without labels; threshold selected using validation labels subject to a 5% false-alarm cap; final metrics on separate test engines. Labels are not model inputs.',
+        'eval_methodology': ('Isolation Forest fit on training windows without labels; feature set, '
+                             'max_samples and threshold selected using validation engines; final metrics '
+                             'measured once on separate test engines; window label is positive if any '
+                             'reading in the window is anomalous.'),
     }
     with open(f'{RESULTS_DIR}/isolation_forest_results.json', 'w') as file:
         json.dump(results, file, indent=2)
@@ -169,58 +232,19 @@ def train_isolation_forest():
     return results
 
 
-def train_rul_regressor():
-    log.info("\n" + "=" * 60)
-    log.info("Training Random Forest Regressor on CMAPSS (fixed pipeline)")
-    log.info("=" * 60)
-
-    pp = Preprocessor()
-    c = pp.load_cmapss(RAW_CMAPSS)
-    cf = extract_cmapss_features(c)
-    feat_cols = get_feature_cols_cmapss(cf)
-
-    X = cf[feat_cols].values
-    y = cf['rul'].values
-
-    engine_ids = cf['engine_id'].unique()
-    rng = np.random.RandomState(42)
-    rng.shuffle(engine_ids)
-    split = int(len(engine_ids) * 0.8)
-    train_engs, test_engs = set(engine_ids[:split]), set(engine_ids[split:])
-
-    train_mask = cf['engine_id'].isin(train_engs)
-    test_mask = cf['engine_id'].isin(test_engs)
-    X_train, y_train = X[train_mask], y[train_mask]
-    X_test, y_test = X[test_mask], y[test_mask]
-
-    scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-
-    rf = RandomForestRegressor(n_estimators=200, min_samples_split=5, min_samples_leaf=2,
-                                n_jobs=-1, random_state=42)
-    rf.fit(X_train, y_train)
-
-    preds = rf.predict(X_test)
-    mae = mean_absolute_error(y_test, preds)
-    rmse = np.sqrt(mean_squared_error(y_test, preds))
-    naive_mae = mean_absolute_error(y_test, np.full_like(y_test, y_train.mean()))
-
-    log.info(f"Test MAE: {mae:.2f} cycles (capped RUL, honest engine-level split)")
-    log.info(f"Test RMSE: {rmse:.2f} cycles")
-    log.info(f"Naive baseline MAE: {naive_mae:.2f} cycles")
-
-    joblib.dump(rf, f'{MODELS_DIR}/rul_regressor.pkl')
-    joblib.dump(scaler, f'{MODELS_DIR}/cmapss_scaler.pkl')
-    with open(f'{MODELS_DIR}/cmapss_feature_cols.json', 'w') as f:
-        json.dump(feat_cols, f, indent=2)
-
-    results = {'test_mae_cycles': round(float(mae),2), 'test_rmse_cycles': round(float(rmse),2),
-               'naive_mae_cycles': round(float(naive_mae),2), 'features': len(feat_cols),
-               'rul_capped_at': 125}
-    with open(f'{RESULTS_DIR}/rul_regressor_results.json', 'w') as f:
-        json.dump(results, f, indent=2)
-    return results
+def train_component_rul_models():
+    from python_service.models import component_rul
+    component_rul._MODELS = None
+    component_rul._MODEL_INFO = None
+    models, info = component_rul._ensure_models()
+    path = os.path.join(MODELS_DIR, 'component_rul', 'component-rul-models.joblib')
+    with open(os.path.join(RESULTS_DIR, 'component_rul_results.json'), 'w') as file:
+        json.dump(info, file, indent=2)
+    log.info(f"Component RUL results written to {RESULTS_DIR}/component_rul_results.json")
+    for component, metric in info['metrics'].items():
+        log.info(f"{component}: test MAE={metric['test']['mae_months']:.3f} months; "
+                 f"mean baseline={info['baseline_metrics'][component]['test']['mae_months']:.3f}")
+    return info
 
 
 if __name__ == '__main__':
@@ -232,6 +256,6 @@ if __name__ == '__main__':
     print(f"Isolation Forest ({if_results['dataset']}) - Precision: {if_results['test_precision']}, "
           f"Recall: {if_results['test_recall']}, F1: {if_results['test_f1']}")
     if not args.anomaly_only:
-        rf_results = train_rul_regressor()
-        print(f"CMAPSS demo RUL - MAE: {rf_results['test_mae_cycles']} cycles, "
-              f"RMSE: {rf_results['test_rmse_cycles']} cycles")
+        component_results = train_component_rul_models()
+        print('Synthetic component RUL test MAE (months): ' + ', '.join(
+            f"{name}={metrics['test']['mae_months']}" for name, metrics in component_results['metrics'].items()))

@@ -1,10 +1,10 @@
-/**
- * simulatorService.js
- * Replays the ziya07 CSV as a live multi-engine sensor stream.
- * Maintains a rolling 30-reading buffer per engine.
- * When buffer is full, calls Flask /predict and broadcasts result.
- *
- */
+
+
+
+
+
+
+
 
 const fs          = require('fs');
 const csv         = require('csv-parser');
@@ -12,19 +12,18 @@ const axios       = require('axios');
 const { createAlert } = require('./alertService');
 const database = require('./databaseService');
 
-// ── Engine config ──────────────────────────────────────────────────────────
-// Bound the default replay workload. Raise ENGINE_COUNT (up to 100) to run
-// more source engines after checking the host/database capacity.
-const ENGINE_COUNT = Math.min(100, Math.max(1, Number.parseInt(process.env.ENGINE_COUNT, 10) || 20));
-const SIMULATOR_SPLIT = (process.env.SIMULATOR_SPLIT || 'test').toLowerCase();
+
+
+const ENGINE_COUNT = 21;
+const SIMULATOR_SPLIT = (process.env.SIMULATOR_SPLIT || 'all').toLowerCase();
 let ENGINES = [];
 
-const WINDOW_SIZE    = 30;   // readings per prediction window
-const EMIT_INTERVAL  = 1500; // ms between readings (1.5s = fast demo)
+const WINDOW_SIZE    = 30;
+const EMIT_INTERVAL  = 1500;
 
-// Independent high-side safety limits. Low values remain the ML model's
-// responsibility; these limits catch an over-range sensor even when the
-// window-level anomaly model does not flag it.
+
+
+
 const HIGH_LIMITS = {
   Temperature_C: 250, RPM: 3000,
   Vibration_X: 10, Vibration_Y: 10, Vibration_Z: 10,
@@ -65,8 +64,8 @@ function createHighLimitAlert(engine, reading, io) {
   if (state) state.highLimitAlertSignature = signature;
   const alert = createAlert({
     equipment_id: engine.id,
-    severity: 'ANOMALY',
-    anomaly_score: 1,
+    severity: 'CRITICAL',
+    anomaly_score: 0.98,
     message: `Sensor safety bound exceeded: ${details.join('; ')}.`,
     feature_snapshot: Object.fromEntries(breaches.map(({ key, value }) => [key, value])),
     top_anomalous_features: details,
@@ -75,22 +74,22 @@ function createHighLimitAlert(engine, reading, io) {
   if (fleetStatus[engine.id]) {
     fleetStatus[engine.id] = {
       ...fleetStatus[engine.id],
-      severity: 'ANOMALY',
-      anomaly_score: 1,
+      severity: 'CRITICAL',
+      anomaly_score: 0.98,
       message: alert.message,
       last_reading: reading,
       feature_snapshot: alert.feature_snapshot,
       top_features: details,
     };
   }
-  if (io) io.emit('new_alert', alert);
+  if (io) io.emit(alert.is_duplicate ? 'alert_updated' : 'new_alert', alert);
   return alert;
 }
 
-// Per-engine state
+
 const engineState = {};
 
-// Shared in-memory fleet status for REST endpoint
+
 const fleetStatus = {};
 
 function registerEngine(engine) {
@@ -101,15 +100,16 @@ function registerEngine(engine) {
   };
   fleetStatus[engine.id] = {
     equipment_id: engine.id, name: engine.name,
+    label_number: engine.label_number,
     source_engine_id: engine.source_engine_id,
-    severity: 'NORMAL', anomaly_score: 0,
+    severity: 'NORMAL', anomaly_score: null,
     message: 'Awaiting first reading...', last_reading: null, reading_count: 0,
   };
 }
 
-// ── Map ziya07 columns to display-friendly sensor names ──────────────────────
-// No per-engine factor here anymore -- each engine's realism now comes from
-  // which source rows belong to its source engine ID, not an invented scale.
+
+
+
 function mapReading(row) {
   return {
     Temperature_C: Number(row.Temperature_C).toFixed(2),
@@ -151,7 +151,7 @@ function prepareReplay(rows) {
     if (!sourceId || !Number.isFinite(record) || !Number.isFinite(Date.parse(row.timestamp))) continue;
     if (!byId.has(sourceId)) byId.set(sourceId, { records: new Map(), timestamps: new Set() });
     const engineRows = byId.get(sourceId);
-    // Ignore repeated source timestamps for one engine.
+
     if (!engineRows.timestamps.has(row.timestamp)) {
       engineRows.timestamps.add(row.timestamp);
       engineRows.records.set(record, row);
@@ -159,8 +159,14 @@ function prepareReplay(rows) {
   }
   const sourceIds = [...byId.keys()].sort((a, b) => Number(a) - Number(b));
   const selectedIds = sourceIds.slice(0, ENGINE_COUNT);
-  for (const sourceId of selectedIds) {
-    const engine = { id: `ENGINE-${sourceId}`, name: `Engine ${sourceId}`, source_engine_id: Number(sourceId) };
+  for (const [index, sourceId] of selectedIds.entries()) {
+    const labelNumber = index + 1;
+    const engine = {
+      id: `ENGINE-${sourceId}`,
+      name: `Engine ${labelNumber}`,
+      label_number: labelNumber,
+      source_engine_id: Number(sourceId),
+    };
     registerEngine(engine);
     engineState[engine.id].rows = [...byId.get(sourceId).records.values()]
       .sort((a, b) => Number(a.record) - Number(b.record));
@@ -169,7 +175,7 @@ function prepareReplay(rows) {
   return ENGINES;
 }
 
-// ── Call Flask predictor ──────────────────────────────────────────────────────
+
 async function callPredictor(engineId, buffer, flaskUrl) {
   try {
     const response = await axios.post(`${flaskUrl}/predict`, {
@@ -183,7 +189,7 @@ async function callPredictor(engineId, buffer, flaskUrl) {
   }
 }
 
-// ── Main simulator ────────────────────────────────────────────────────────────
+
 function startSimulator({ io, flaskUrl, dataPath }) {
   console.log(`[Simulator] Starting — data: ${dataPath}`);
 
@@ -200,7 +206,8 @@ function startSimulator({ io, flaskUrl, dataPath }) {
     .on('data', row => {
       if (Object.hasOwn(row, 'engine_id') && Object.hasOwn(row, 'is_anomaly')) {
         syntheticRows = true;
-        if (row.split && String(row.split).toLowerCase() !== SIMULATOR_SPLIT) return;
+        if (SIMULATOR_SPLIT !== 'all' && row.split
+          && String(row.split).toLowerCase() !== SIMULATOR_SPLIT) return;
         const sourceId = String(row.engine_id || '').trim();
         if (!sourceId) return;
         if (!selectedSourceIds.has(sourceId) && selectedSourceIds.size >= ENGINE_COUNT) return;
@@ -275,13 +282,30 @@ function replayRows(rows, io, flaskUrl) {
           state.latestResult = result;
 
           const highBreaches = getHighLimitBreaches(reading);
-          const effectiveSeverity = highBreaches.length ? 'ANOMALY' : result.severity;
+          const reportedModelScore = result.anomaly_score == null
+            ? NaN : Number(result.anomaly_score);
+          const modelDetected = result.is_anomalous === true
+            || ['TAKE_NOTE', 'CRITICAL', 'WARNING', 'ANOMALY'].includes(result.severity)
+            || (Number.isFinite(reportedModelScore) && reportedModelScore >= 0.5);
+          const modelScore = modelDetected
+            ? Math.min(0.98, Math.max(Number.isFinite(reportedModelScore) ? reportedModelScore : 0, 0.1))
+            : Number.isFinite(reportedModelScore)
+              ? Math.min(0.98, Math.max(reportedModelScore, 0.001)) : null;
+          const effectiveScore = highBreaches.length ? 0.98 : modelScore;
+          const effectiveSeverity = highBreaches.length
+            ? 'CRITICAL'
+            : !modelDetected ? 'NORMAL' : effectiveScore >= 0.75 ? 'CRITICAL' : 'TAKE_NOTE';
           const effectiveMessage = highBreaches.length
             ? `Sensor safety bound exceeded: ${highBreaches.map(({ key, limit, min, value }) => `${key} ${value} is outside ${min === undefined ? 'no lower bound' : min} to ${limit}`).join('; ')}.`
             : result.message;
 
           if (database.isDatabaseEnabled()) {
-            database.savePrediction(engine.id, engine.name, result, engine.source_engine_id)
+            database.savePrediction(engine.id, engine.name, {
+              ...result,
+              severity: effectiveSeverity,
+              anomaly_score: effectiveScore,
+              message: effectiveMessage,
+            }, engine.source_engine_id)
               .catch(err => console.error('[Database] Could not persist prediction:', err.message));
           }
 
@@ -289,7 +313,7 @@ function replayRows(rows, io, flaskUrl) {
             ...fleetStatus[engine.id],
             source_engine_id: engine.source_engine_id,
             severity:      effectiveSeverity,
-            anomaly_score: highBreaches.length ? 1 : result.anomaly_score,
+            anomaly_score: effectiveScore,
             message:       effectiveMessage,
             last_reading:  reading,
             reading_count: state.readingCount,
@@ -297,18 +321,18 @@ function replayRows(rows, io, flaskUrl) {
             feature_snapshot: result.feature_snapshot,
           };
 
-          // FIX: severity is now 'NORMAL' or 'ANOMALY' only.
-          if (result.severity !== 'NORMAL' && !highBreaches.length) {
+
+          if (modelDetected && !highBreaches.length) {
             const alert = createAlert({
               equipment_id:     engine.id,
-              severity:         result.severity,
-              anomaly_score:    result.anomaly_score,
-              message:          result.message,
+              severity:         effectiveSeverity,
+              anomaly_score:    effectiveScore,
+              message:          effectiveMessage,
               feature_snapshot: result.feature_snapshot,
               top_anomalous_features: result.top_anomalous_features,
             });
 
-            io.emit('new_alert', alert);
+            io.emit(alert.is_duplicate ? 'alert_updated' : 'new_alert', alert);
           }
 
           io.emit('prediction', {
@@ -316,7 +340,7 @@ function replayRows(rows, io, flaskUrl) {
             name:             engine.name,
             ...result,
             severity:         effectiveSeverity,
-            anomaly_score:    highBreaches.length ? 1 : result.anomaly_score,
+            anomaly_score:    effectiveScore,
             message:          effectiveMessage,
             reading_count:    state.readingCount,
             ground_truth_anomaly: reading.is_anomaly,
@@ -324,8 +348,10 @@ function replayRows(rows, io, flaskUrl) {
             source_split: reading.split,
           });
 
-          console.log(`[${engine.id}] ${result.severity} | `
-                    + `score=${result.anomaly_score.toFixed(3)}`);
+          const scoreLabel = Number.isFinite(effectiveScore)
+            ? effectiveScore.toFixed(5) : 'not-applicable';
+          const scoreName = effectiveSeverity === 'NORMAL' ? 'score' : 'anomaly_score';
+          console.log(`[${engine.id}] ${effectiveSeverity} | ${scoreName}=${scoreLabel}`);
         }
 
         state.buffer.shift();
@@ -342,18 +368,18 @@ function replayRows(rows, io, flaskUrl) {
 function getFleetStatus() { return fleetStatus; }
 function getTruckStatus(id) { return fleetStatus[id] || null; }
 
-// ── Live anomaly injection (for manual demo/testing) ─────────────────────────
-// Mutates a running engine's live buffer in place with ACTUAL target sensor
-// values (e.g. "set Temperature to 140") instead of an abstract severity
-// multiplier -- the caller sees and chooses the exact number that goes into
-// the buffer, not a sigma scale. The next natural tick's /predict call will
-// see the corrupted buffer and (if the values are anomalous enough) flag it
-// through the normal, unmodified alert pipeline -- nothing about
-// createAlert() or the Socket.io emit path changes.
-//
-// These are descriptive statistics computed from normal-labelled training
-// rows in synthetic_anomaly_records.csv. They guide manual injection only;
-// the Isolation Forest makes the actual model decision.
+
+
+
+
+
+
+
+
+
+
+
+
 const SENSOR_STATS = {
   payload_t: { label: 'Payload', unit: 't', mean: 61.058, std: 97.947, min: 0, max: 270 },
   speed_kmh: { label: 'Speed', unit: 'km/h', mean: 13.838, std: 14.411, min: 0, max: 42.75 },
@@ -373,7 +399,7 @@ const SENSOR_STATS = {
   Vibration_Z: { label: 'Vibration Z', unit: '', mean: 1.204, std: 0.246, min: 0.681, max: 2.527 },
 };
 
-// Decimal places to match mapReading()'s own formatting per field.
+
 const SENSOR_DECIMALS = {
   payload_t: 1, speed_kmh: 1, total_resistance_pct: 2, ambient_C: 1,
   Temperature_C: 2, Exhaust_Temp_C: 1, RPM: 1, Torque_Nm: 1,
@@ -390,9 +416,9 @@ function getSensorInfo() {
   }));
 }
 
-// Sets one or more sensors on a running engine's live buffer to EXACT
-// caller-supplied values.
-// sensors: [{ key: 'Temperature_C', value: 140 }, ...]
+
+
+
 function injectAnomaly({ equipment_id, sensors, io }) {
   const state = engineState[equipment_id];
   if (!state) throw new Error(`Unknown engine: ${equipment_id}`);
@@ -417,9 +443,9 @@ function injectAnomaly({ equipment_id, sensors, io }) {
     return r;
   });
 
-  // Immediate, deterministic safety check on the injected reading. The
-  // ML predictor is still called on the next tick, but does not gate a
-  // high-limit alert.
+
+
+
   const latestReading = state.buffer[state.buffer.length - 1];
   const highLimitAlert = createHighLimitAlert(state.info, latestReading, io);
   state.injectionTargets = targets;
@@ -433,7 +459,7 @@ function injectAnomaly({ equipment_id, sensors, io }) {
     equipment_id,
     sensors_applied: targets,
     buffer_size: state.buffer.length,
-    readings_affected: state.buffer.length,   // every buffered reading was set, matching count
+    readings_affected: state.buffer.length,
     fields_changed: fieldsChanged,
     high_limit_alert: highLimitAlert,
   };

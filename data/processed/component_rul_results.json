@@ -1,0 +1,185 @@
+{
+  "version": "synthetic-component-rul-v6-retrained-test-metrics",
+  "dataset": "synthetic_component_rul.csv",
+  "engines": 300,
+  "window_records": 6,
+  "rul_cap_months": null,
+  "rul_max_months": 49.99,
+  "training_rows": 74550,
+  "feature_count": 62,
+  "validation_engines": 45,
+  "test_engines": 45,
+  "metrics": {
+    "main_bearings": {
+      "validation": {
+        "mae_months": 5.474,
+        "rmse_months": 7.407
+      },
+      "test": {
+        "mae_months": 4.957,
+        "rmse_months": 6.634
+      }
+    },
+    "fuel_injectors": {
+      "validation": {
+        "mae_months": 2.543,
+        "rmse_months": 3.324
+      },
+      "test": {
+        "mae_months": 2.571,
+        "rmse_months": 3.364
+      }
+    },
+    "turbocharger": {
+      "validation": {
+        "mae_months": 5.201,
+        "rmse_months": 6.856
+      },
+      "test": {
+        "mae_months": 5.13,
+        "rmse_months": 6.731
+      }
+    },
+    "cooling_system": {
+      "validation": {
+        "mae_months": 5.558,
+        "rmse_months": 7.46
+      },
+      "test": {
+        "mae_months": 5.613,
+        "rmse_months": 7.455
+      }
+    },
+    "air_filter": {
+      "validation": {
+        "mae_months": 0.359,
+        "rmse_months": 0.446
+      },
+      "test": {
+        "mae_months": 0.363,
+        "rmse_months": 0.451
+      }
+    }
+  },
+  "model_comparisons": {
+    "main_bearings": [
+      {
+        "model": "HistGradientBoostingRegressor",
+        "validation_mae_months": 5.474
+      }
+    ],
+    "fuel_injectors": [
+      {
+        "model": "HistGradientBoostingRegressor",
+        "validation_mae_months": 2.543
+      }
+    ],
+    "turbocharger": [
+      {
+        "model": "HistGradientBoostingRegressor",
+        "validation_mae_months": 5.201
+      }
+    ],
+    "cooling_system": [
+      {
+        "model": "HistGradientBoostingRegressor",
+        "validation_mae_months": 5.558
+      }
+    ],
+    "air_filter": [
+      {
+        "model": "HistGradientBoostingRegressor",
+        "validation_mae_months": 0.359
+      }
+    ]
+  },
+  "model_parameters": {
+    "estimator": "HistGradientBoostingRegressor",
+    "iterations": 180,
+    "max_leaf_nodes": 31,
+    "learning_rate": 0.06,
+    "l2_regularization": 1.0
+  },
+  "validation_residual_ranges": {
+    "main_bearings": [
+      -8.768876519842388,
+      10.808696430224552
+    ],
+    "fuel_injectors": [
+      -4.320744583762276,
+      4.457807056859939
+    ],
+    "turbocharger": [
+      -8.416453077530695,
+      9.915203152164988
+    ],
+    "cooling_system": [
+      -9.06354091426177,
+      10.202190248506989
+    ],
+    "air_filter": [
+      -0.5630126297162986,
+      0.6023630668031194
+    ]
+  },
+  "uncertainty_method": "10th-90th percentile of residuals on engine-held-out validation data",
+  "feature_importance": {
+    "main_bearings": [],
+    "fuel_injectors": [],
+    "turbocharger": [],
+    "cooling_system": [],
+    "air_filter": []
+  },
+  "baseline_metrics": {
+    "main_bearings": {
+      "validation": {
+        "mae_months": 10.74,
+        "rmse_months": 12.591
+      },
+      "test": {
+        "mae_months": 10.299,
+        "rmse_months": 12.033
+      }
+    },
+    "fuel_injectors": {
+      "validation": {
+        "mae_months": 5.882,
+        "rmse_months": 6.833
+      },
+      "test": {
+        "mae_months": 5.883,
+        "rmse_months": 6.849
+      }
+    },
+    "turbocharger": {
+      "validation": {
+        "mae_months": 8.805,
+        "rmse_months": 10.323
+      },
+      "test": {
+        "mae_months": 8.711,
+        "rmse_months": 10.229
+      }
+    },
+    "cooling_system": {
+      "validation": {
+        "mae_months": 9.817,
+        "rmse_months": 11.508
+      },
+      "test": {
+        "mae_months": 9.46,
+        "rmse_months": 11.193
+      }
+    },
+    "air_filter": {
+      "validation": {
+        "mae_months": 0.689,
+        "rmse_months": 0.815
+      },
+      "test": {
+        "mae_months": 0.697,
+        "rmse_months": 0.825
+      }
+    }
+  }
+}

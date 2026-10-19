@@ -1,12 +1,12 @@
-// src/components/EngineSensorCard.jsx
+
 
 
 import IMG_SRC from '../assets/engine-card.webp';
 import { getSeverityColor } from '../constants/Severity';
 
-// anchor: [x%, y%] point on the photo the leader line touches.
-// label: [x%, y%] where the text box sits (left-aligned near the left
-// edge, right-aligned near the right edge).
+
+
+
 const CALLOUTS = [
   { key: 'temperature_mean',     label: 'Temperature', unit: '°C',  decimals: 1, side: 'left',  anchor: [48, 22], labelY: 18 },
   { key: 'rpm_mean',             label: 'Engine RPM',  unit: 'rpm', decimals: 0, side: 'left',  anchor: [28, 62], labelY: 68 },
@@ -23,9 +23,18 @@ function fmtVal(v, unit, decimals) {
 
 export default function EngineSensorCard({ truck, onSelect }) {
   const sev = truck.severity || 'NORMAL';
-  const color = getSeverityColor(sev);
   const snap = truck.feature_snapshot || {};
   const hasSnap = snap.temperature_mean != null;
+  const hasAssessment = sev !== 'NORMAL' || Number(truck.reading_count) >= 30;
+  const displaySeverity = sev === 'WARNING' || sev === 'ANOMALY' ? 'CRITICAL' : sev;
+  const badgeSeverity = hasAssessment ? displaySeverity : 'PENDING';
+  const color = hasAssessment ? getSeverityColor(displaySeverity) : 'var(--text3)';
+  const hasScore = truck.anomaly_score != null && Number.isFinite(Number(truck.anomaly_score));
+  const scoreLabel = hasScore
+    ? `${Math.max(4.9, Math.min(98, Number(truck.anomaly_score) * 100)).toFixed(1)}%` : null;
+  const modelStatus = hasAssessment
+    ? `${displaySeverity === 'TAKE_NOTE' ? 'TAKE NOTE' : displaySeverity}${scoreLabel ? ` · ${scoreLabel}` : ''}`
+    : 'Awaiting assessment';
 
   return (
     <div
@@ -35,16 +44,17 @@ export default function EngineSensorCard({ truck, onSelect }) {
     >
       <div className="engine-card__header">
         <div>
-          <div className="engine-card__id">{truck.equipment_id}</div>
-          <div className="engine-card__name">{truck.name}</div>
+          <div className="engine-card__id">Engine {truck.label_number}</div>
         </div>
-        <span className="sev-badge" data-sev={sev} style={{ color }}>{sev}</span>
+        <span className="sev-badge" data-sev={badgeSeverity} style={{ color }}>
+          {hasAssessment ? (displaySeverity === 'TAKE_NOTE' ? 'TAKE NOTE' : displaySeverity) : 'AWAITING'}
+        </span>
       </div>
 
       <div className="engine-card__art">
         <img src={IMG_SRC} alt="Engine" className="engine-card__photo" />
 
-        {/* leader lines, drawn in percentage space so they track the image at any size */}
+        {                                                                                 }
         <svg className="engine-card__lines" viewBox="0 0 100 100" preserveAspectRatio="none">
           {hasSnap && CALLOUTS.map(c => {
             const labelX = c.side === 'left' ? 4 : 96;
@@ -77,10 +87,8 @@ export default function EngineSensorCard({ truck, onSelect }) {
 
       <div className="engine-card__footer">
         <div>
-          <span>Anomaly </span>
-          <span className="mono" style={{ color, fontWeight: 700 }}>
-            {((truck.anomaly_score || 0) * 100).toFixed(0)}%
-          </span>
+          <span>Model status </span>
+          <span className="mono" style={{ color, fontWeight: 700 }}>{modelStatus}</span>
         </div>
         {truck.reading_count > 0 && <span>{truck.reading_count} readings</span>}
       </div>

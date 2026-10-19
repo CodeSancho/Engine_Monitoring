@@ -1,13 +1,13 @@
-/**
- * server.js  —  Mopani Engine Monitoring Backend  (port 3000)
- * ============================================================
- * Orchestrates:
- *  - REST API  (Express)
- *  - WebSocket streaming (Socket.io)
- *  - Simulator replaying CSV sensor data as live stream
- *  - Prediction calls to Flask ML microservice
- *  - Alert management
- */
+
+
+
+
+
+
+
+
+
+
 
 require('dotenv').config();
 const express    = require('express');
@@ -39,18 +39,15 @@ const DATA_PATH   = process.env.DATA_PATH   ||
 app.use(cors());
 app.use(express.json());
 
-// ── Make io and config available to routes ──────────────────────────────────
+
 app.set('io',       io);
 app.set('flaskUrl', FLASK_URL);
 
-// ── REST Routes ──────────────────────────────────────────────────────────────
+
 app.use('/api/fleet',  fleetRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/inject', injectRoutes);
 app.use('/api/component-rul', componentRulRoutes);
-const rulDemoRoutes = require('./routes/rulDemo');
-app.use('/api/rul-demo', rulDemoRoutes);
-
 app.get('/api/health', async (req, res) => {
   const databaseStatus = await database.checkDatabase();
   res.json({
@@ -74,18 +71,18 @@ app.get('/api/model-info', async (req, res) => {
   }
 });
 
-// ── WebSocket ────────────────────────────────────────────────────────────────
+
 setupWebSocket(io);
 
-// ── Start simulator ──────────────────────────────────────────────────────────
+
 initAlertStore();
 
-// Start simulator after 1 second to let server bind
+
 setTimeout(() => {
   startSimulator({ io, flaskUrl: FLASK_URL, dataPath: DATA_PATH });
 }, 1000);
 
-// ── Start server ─────────────────────────────────────────────────────────────
+
 server.listen(PORT, () => {
   console.log(`\n╔═══════════════════════════════════════════════════╗`);
   console.log(`║  Mopani Engine Monitoring Backend                 ║`);

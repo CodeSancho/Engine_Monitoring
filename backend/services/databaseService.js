@@ -48,7 +48,7 @@ async function upsertEquipment(equipmentId, name, sourceDeviceId = null) {
         [equipmentId, name, sourceDeviceId === null ? null : String(sourceDeviceId)]);
         return;
       } catch (err) {
-        // Keep existing databases usable until migration 002 is applied.
+
         if (err.code !== '42703') throw err;
         supportsSourceDeviceId = false;
         console.warn('[Database] equipment.source_device_id is missing; storing source identity in metadata until migration 002 is applied.');
@@ -152,6 +152,16 @@ async function acknowledgeAlertRecord(id) {
   return rows[0] ? normalizeAlert(rows[0]) : null;
 }
 
+async function acknowledgeAllAlertRecords() {
+  if (!pool) return null;
+  const { rows } = await query(`update public.alerts set acknowledged = true,
+    acknowledged_at = coalesce(acknowledged_at, now()) where acknowledged = false
+    returning id, equipment_id, severity, anomaly_score, message,
+      feature_snapshot, top_anomalous_features, created_at as timestamp,
+      acknowledged, acknowledged_at`);
+  return rows.map(normalizeAlert);
+}
+
 function numberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
@@ -166,5 +176,5 @@ function normalizeAlert(row) {
 module.exports = {
   isDatabaseEnabled, checkDatabase, query, saveReading, getSensorReadings,
   savePrediction, createAlertRecord,
-  getAlerts, acknowledgeAlertRecord,
+  getAlerts, acknowledgeAlertRecord, acknowledgeAllAlertRecords,
 };

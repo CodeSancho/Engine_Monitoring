@@ -35,7 +35,7 @@ CMAPSS_ALL_COLS = (
     [f's{i}' for i in range(1, 22)]
 )
 
-RUL_CAP = 125  # Heimes (2008) standard for FD001, makes MAE comparable to published baselines.
+RUL_CAP = 125
 
 
 class Preprocessor:
@@ -51,7 +51,7 @@ class Preprocessor:
         df = pd.read_csv(filepath)
         df.columns = [c.strip() for c in df.columns]
 
-        # FIX 1: 'Torque' (not 'Torque (Nm)') is the real raw column name.
+
         rename = {
             'Temperature (°C)':  'Temperature_C',
             'Torque':             'Torque_Nm',
@@ -59,8 +59,8 @@ class Preprocessor:
         }
         df = df.rename(columns=rename)
 
-        # Guardrail: fail loudly instead of silently dropping a sensor if a
-        # future raw-file schema change breaks this rename again.
+
+
         missing = [c for c in ZIYA_SENSORS if c not in df.columns]
         assert not missing, f"Expected sensor columns missing after rename: {missing}"
 
@@ -93,11 +93,11 @@ class Preprocessor:
         df['engine_id'] = df['engine_id'].astype(int)
         df['cycle']     = df['cycle'].astype(int)
 
-        # FIX 2: piecewise-linear RUL, capped, not raw linear countdown.
+
         max_cycles  = df.groupby('engine_id')['cycle'].max()
         rul_linear  = df['engine_id'].map(max_cycles) - df['cycle']
         df['rul']   = np.minimum(rul_linear, RUL_CAP)
-        df['failure'] = (rul_linear == 0).astype(int)  # true end-of-life flag, independent of the cap
+        df['failure'] = (rul_linear == 0).astype(int)
 
         keep = ['engine_id','cycle','rul','failure'] + CMAPSS_SENSORS
         df   = df[keep]
@@ -114,17 +114,6 @@ class Preprocessor:
         if self.scaler_path:
             self._save_scaler('ziya07_scaler.pkl')
         return df
-
-    def fit_scale_cmapss(self, df):
-        df = df.copy()
-        cols = [c for c in CMAPSS_SENSORS if c in df.columns]
-        scaler = MinMaxScaler()
-        df[cols] = scaler.fit_transform(df[cols])
-        if self.scaler_path:
-            path = os.path.join(os.path.dirname(self.scaler_path), 'cmapss_scaler.pkl')
-            joblib.dump(scaler, path)
-            log.info(f"CMAPSS scaler saved -> {path}")
-        return df, scaler
 
     def _clean_ziya07(self, df):
         """
@@ -148,12 +137,12 @@ class Preprocessor:
 
 
 if __name__ == '__main__':
-    # Portable root resolution: this file lives at
-    # ENGINE_MONTORING/python_service/data/preprocessor.py, so the project
-    # root is two directories up. Using __file__ (this file's own path)
-    # instead of a hardcoded string means this works on ANY machine --
-    # your laptop, Skywave's server, another dev's clone of the repo --
-    # without ever needing to know that machine's folder layout in advance.
+
+
+
+
+
+
     ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     pp = Preprocessor()

@@ -11,7 +11,7 @@ SENSOR_COLUMNS = [
     'Oil_Pressure_kPa', 'Boost_Pressure_kPa',
     'Vibration_X', 'Vibration_Y', 'Vibration_Z',
 ]
-WINDOW_SIZE = 30  # 30 five-minute records = a 150-minute monitoring window
+WINDOW_SIZE = 30
 WINDOW_STEP = 5
 
 
@@ -65,7 +65,7 @@ def _features(values):
 
 
 def build_windows(frame, split):
-    """Build independent windows within each engine; never cross engine IDs."""
+    """Build vectorized, engine-local windows with any-reading anomaly labels."""
     rows = []
     subset = frame[frame['split'] == split]
     for engine_id, engine in subset.groupby('engine_id', sort=True):
@@ -73,17 +73,42 @@ def build_windows(frame, split):
         values = engine[SENSOR_COLUMNS].to_numpy(dtype=float)
         labels = engine['is_anomaly'].to_numpy(dtype=int)
         records = engine['record'].to_numpy(dtype=int)
-        for end in range(WINDOW_SIZE - 1, len(engine), WINDOW_STEP):
-            features = _features(values[end - WINDOW_SIZE + 1:end + 1])
-            features.update({
-                'engine_id': int(engine_id),
-                'window_end_record': int(records[end]),
-                'is_anomaly': int(labels[end]),
-            })
-            rows.append(features)
-    return pd.DataFrame(rows)
+        ends = np.arange(WINDOW_SIZE - 1, len(engine), WINDOW_STEP)
+        if not len(ends):
+            continue
+        windows = np.lib.stride_tricks.sliding_window_view(values, WINDOW_SIZE, axis=0)[ends - WINDOW_SIZE + 1]
+        mean = windows.mean(axis=2)
+        std = windows.std(axis=2)
+        minimum = windows.min(axis=2)
+        maximum = windows.max(axis=2)
+        x = np.arange(WINDOW_SIZE, dtype=float) - (WINDOW_SIZE - 1) / 2
+        slopes = np.einsum('nft,t->nf', windows, x) / np.square(x).sum()
+        block = {}
+        for i, sensor in enumerate(SENSOR_COLUMNS):
+            block[f'{sensor}_mean'] = mean[:, i]
+            block[f'{sensor}_std'] = std[:, i]
+            block[f'{sensor}_min'] = minimum[:, i]
+            block[f'{sensor}_max'] = maximum[:, i]
+            block[f'{sensor}_slope'] = slopes[:, i]
+            block[f'{sensor}_range'] = maximum[:, i] - minimum[:, i]
+        index = {name: i for i, name in enumerate(SENSOR_COLUMNS)}
+        block['vibration_magnitude'] = np.sqrt(sum(mean[:, index[name]] ** 2 for name in ('Vibration_X', 'Vibration_Y', 'Vibration_Z')))
+        block['power_efficiency'] = mean[:, index['Power_Output_kW']] / np.maximum(mean[:, index['Torque_Nm']] * mean[:, index['RPM']] / 9549, 1e-9)
+        block['thermal_load_per_rpm'] = mean[:, index['Temperature_C']] / np.maximum(mean[:, index['RPM']], 1e-9)
+        block['engine_id'] = int(engine_id)
+        block['window_end_record'] = records[ends]
+        block['is_anomaly'] = np.array([labels[end - WINDOW_SIZE + 1:end + 1].max() for end in ends], dtype=int)
+        if 'anomaly_type' in engine:
+            types = engine['anomaly_type'].astype(str).to_numpy()
+            block['anomaly_type'] = [next((types[j] for j in range(end, end - WINDOW_SIZE, -1)
+                                           if types[j].lower() not in ('', 'normal', 'none', 'nan')), 'normal')
+                                     for end in ends]
+        else:
+            block['anomaly_type'] = 'unknown'
+        rows.append(pd.DataFrame(block))
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
 
 
 def feature_columns(windows):
-    excluded = {'engine_id', 'window_end_record', 'is_anomaly'}
+    excluded = {'engine_id', 'window_end_record', 'is_anomaly', 'anomaly_type'}
     return [column for column in windows.columns if column not in excluded]

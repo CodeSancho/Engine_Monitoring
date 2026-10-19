@@ -1,20 +1,20 @@
-// src/utils/engineComponents.js
-//
-// Translates a sensor/feature name (e.g. "Vibration_X", "Vibration_X_slope")
-// into the physical engine component it's actually measuring, so alerts and
-// detail views can say "Bearing / Rotating Assembly" instead of just
-// "Vibration_X: +0.0234" -- useful to someone who isn't going to mentally
-// map sensor column names to hardware themselves.
-//
-// IMPORTANT ON HONESTY: this is a general, textbook association between a
-// sensor type and the subsystem it typically monitors on a diesel haul
-// truck engine -- it is NOT a diagnosis, and it is NOT derived from any
-// data or model in this project (the anomaly detector has no concept of
-// "components" -- it only sees the 8 raw sensor columns). Every label
-// below is phrased as "commonly monitors" / "often associated with",
-// never "this IS the fault", to avoid implying a certainty the model
-// doesn't actually have. Treat this purely as a reader's aid layered on
-// top of the real model output, not a new inference.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const COMPONENT_MAP = {
   Temperature_C: {
     component: 'Cooling System',
@@ -58,9 +58,9 @@ export const COMPONENT_MAP = {
   },
 };
 
-// Strip predictor.py's feature-engineering suffixes (_slope, _mean, _std,
-// _min, _max, _range) to recover the base sensor key, e.g.
-// "Vibration_X_slope" -> "Vibration_X".
+
+
+
 const SUFFIXES = ['_slope', '_mean', '_std', '_min', '_max', '_range'];
 export function baseSensorKey(featureKey) {
   let key = featureKey.trim();
@@ -70,10 +70,10 @@ export function baseSensorKey(featureKey) {
   return key;
 }
 
-// Accepts either a raw sensor key ("Vibration_X") or a feature-engineered
-// one ("Vibration_X_slope: +0.0234" or just "Vibration_X_slope"). Returns
-// null for anything not in COMPONENT_MAP (e.g. "vibration_magnitude",
-// which is a composite, not a single sensor) rather than guessing.
+
+
+
+
 export function getComponentInfo(featureKeyOrString) {
   const key = baseSensorKey(featureKeyOrString.split(':')[0].trim());
   return COMPONENT_MAP[key] || null;

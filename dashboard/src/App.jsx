@@ -1,4 +1,4 @@
-// src/App.jsx
+
 import { useState, useEffect, useCallback } from 'react';
 import { socket, fetchFleetStatus, fetchActiveAlerts, fetchTruckReadings } from './services/api';
 import FleetOverview   from './components/FleetOverview';
@@ -20,17 +20,19 @@ export default function App() {
   const [connected,    setConnected]    = useState(false);
 
   const loadFleet = useCallback(async () => {
-    try { const d = await fetchFleetStatus(); setFleet(d.trucks || []); } catch {}
+    try { const d = await fetchFleetStatus(); setFleet(d.trucks || []); }
+    catch (error) { console.error('Failed to load fleet status:', error); }
   }, []);
 
   const loadAlerts = useCallback(async () => {
-    try { const d = await fetchActiveAlerts(); setAlerts(d.alerts || []); } catch {}
+    try { const d = await fetchActiveAlerts(); setAlerts(d.alerts || []); }
+    catch (error) { console.error('Failed to load alerts:', error); }
   }, []);
 
   useEffect(() => {
-    loadFleet(); loadAlerts();
+    const initialLoad = setTimeout(() => { loadFleet(); loadAlerts(); }, 0);
     const p = setInterval(() => { loadFleet(); loadAlerts(); }, 8000);
-    return () => clearInterval(p);
+    return () => { clearTimeout(initialLoad); clearInterval(p); };
   }, [loadFleet, loadAlerts]);
 
   useEffect(() => {
@@ -40,7 +42,7 @@ export default function App() {
       setPredictions(prev => ({ ...prev, [data.equipment_id]: data }));
       setFleet(prev => prev.map(t => t.equipment_id === data.equipment_id
         ? { ...t, severity: data.severity, anomaly_score: data.anomaly_score,
-            rul_hours: data.rul_hours, message: data.message,
+            message: data.message,
             reading_count: data.reading_count, feature_snapshot: data.feature_snapshot }
         : t));
     });
@@ -51,12 +53,18 @@ export default function App() {
       });
     });
     socket.on('new_alert', alert => setAlerts(prev => [alert, ...prev].slice(0, 100)));
+    socket.on('alert_updated', alert => setAlerts(prev => prev.map(item =>
+      item.id === alert.id ? { ...item, ...alert } : item)));
     socket.on('alert_acknowledged', ({ id }) => setAlerts(prev => prev.filter(a => a.id !== id)));
+    socket.on('alerts_cleared', ({ ids = [] }) => {
+      const cleared = new Set(ids.map(Number));
+      setAlerts(prev => prev.filter(alert => !cleared.has(Number(alert.id))));
+    });
     return () => socket.off();
   }, []);
 
   const sorted = [...fleet].sort((a, b) => {
-    const o = { CRITICAL: 0, CAUTION: 1, WARNING: 2, NORMAL: 3 };
+    const o = { CRITICAL: 0, WARNING: 0, ANOMALY: 0, TAKE_NOTE: 1, NORMAL: 2 };
     return (o[a.severity] ?? 4) - (o[b.severity] ?? 4);
   });
 
@@ -93,7 +101,7 @@ export default function App() {
         {view === 'fleet'  && <FleetOverview fleet={sorted} predictions={predictions} onSelectTruck={openTruck} />}
         {view === 'truck'  && selectedTruck && <TruckDetail truckId={selectedTruck} fleet={fleet}
             prediction={predictions[selectedTruck]} sensorHistory={sensorHistory[selectedTruck] || []} onBack={goFleet} />}
-        {view === 'alerts' && <AlertPanel alerts={alerts}
+        {view === 'alerts' && <AlertPanel alerts={alerts} fleet={fleet}
             onAcknowledge={id => setAlerts(prev => prev.filter(a => a.id !== id))} onSelectTruck={openTruck} />}
         {view === 'model'  && <ModelInfo />}
         {view === 'rul'    && <ComponentRulDashboard />}

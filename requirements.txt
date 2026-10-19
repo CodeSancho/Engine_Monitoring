@@ -1,0 +1,12 @@
+# Runtime dependencies for the Flask ML service
+# Pin exact versions after training: run `pip freeze` in your working venv and
+# copy the versions of scikit-learn, pandas, numpy, joblib and flask here.
+# scikit-learn must match the version used to save the models with joblib.
+
+flask
+flask-cors
+scikit-learn
+pandas
+numpy
+joblib
+scipy

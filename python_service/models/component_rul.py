@@ -1,8 +1,9 @@
 """Component-level RUL models trained from synthetic_component_rul.csv.
 
-Inputs are six consecutive operating records (not target/health/age fields).
-Five independent Random Forest regressors predict RUL in months. The spread
-across trees is shown as model disagreement, not a confidence interval.
+Inputs are six consecutive operating records plus engine operating time (not
+component target, health, or age fields). Five independent gradient-boosting
+regressors predict RUL in months. A residual range is calibrated on validation
+engines and shown as an estimate range, not a guaranteed confidence interval.
 """
 
 import os
@@ -11,7 +12,7 @@ import threading
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -40,7 +41,7 @@ SIGNALS = [
 ]
 FEATURE_NAMES = [f"{signal}_{stat}" for stat in ("mean", "std", "slope", "latest") for signal in SIGNALS]
 FEATURE_NAMES += ["operating_hours", "month_index"]
-MODEL_VERSION = "synthetic-component-rul-v3"
+MODEL_VERSION = "synthetic-component-rul-v6-retrained-test-metrics"
 _MODELS = None
 _MODEL_INFO = None
 _LOCK = threading.Lock()
@@ -98,18 +99,22 @@ def _fit_models():
     models = {}
     metrics = {}
     feature_importance = {}
+    residual_ranges = {}
+    comparisons = {}
     rul_max_months = max(float(np.max(y[name][train])) for name in COMPONENTS)
     for index, component in enumerate(COMPONENTS):
-        model = RandomForestRegressor(
-            n_estimators=96,
-            max_depth=18,
-            min_samples_leaf=8,
-            max_features=0.8,
-            n_jobs=-1,
-            random_state=410 + index,
-        )
+        model = HistGradientBoostingRegressor(max_iter=180, max_leaf_nodes=31,
+                                              learning_rate=0.06, l2_regularization=1.0,
+                                              early_stopping=False, random_state=410 + index)
         model.fit(X[train], y[component][train])
         validation_prediction = model.predict(X[validation])
+        comparisons[component] = [{"model": type(model).__name__,
+                                   "validation_mae_months": round(float(mean_absolute_error(y[component][validation], validation_prediction)), 3)}]
+        validation_residuals = y[component][validation] - validation_prediction
+        residual_ranges[component] = [
+            float(np.quantile(validation_residuals, 0.10)),
+            float(np.quantile(validation_residuals, 0.90)),
+        ]
         models[component] = model
         metrics[component] = {}
         for split_name, mask in (("validation", validation), ("test", test)):
@@ -118,11 +123,14 @@ def _fit_models():
                 "mae_months": round(float(mean_absolute_error(y[component][mask], predicted)), 3),
                 "rmse_months": round(float(np.sqrt(mean_squared_error(y[component][mask], predicted))), 3),
             }
-        importance = model.feature_importances_
-        feature_importance[component] = [
-            {"feature": FEATURE_NAMES[i], "importance": round(float(importance[i]), 5)}
-            for i in np.argsort(importance)[-5:][::-1]
-        ]
+        if hasattr(model, "feature_importances_"):
+            importance = model.feature_importances_
+            feature_importance[component] = [
+                {"feature": FEATURE_NAMES[i], "importance": round(float(importance[i]), 5)}
+                for i in np.argsort(importance)[-5:][::-1]
+            ]
+        else:
+            feature_importance[component] = []
 
     info = {
         "version": MODEL_VERSION,
@@ -136,16 +144,33 @@ def _fit_models():
         "validation_engines": int(meta.loc[validation, "engine_id"].nunique()),
         "test_engines": int(meta.loc[test, "engine_id"].nunique()),
         "metrics": metrics,
+        "model_comparisons": comparisons,
         "model_parameters": {
-            "estimator": "RandomForestRegressor",
-            "trees": 96,
-            "max_depth": 18,
-            "min_samples_leaf": 8,
-            "max_features": 0.8,
+            "estimator": "HistGradientBoostingRegressor",
+            "iterations": 180,
+            "max_leaf_nodes": 31,
+            "learning_rate": 0.06,
+            "l2_regularization": 1.0,
         },
+        "validation_residual_ranges": residual_ranges,
+        "uncertainty_method": "10th-90th percentile of residuals on engine-held-out validation data",
         "feature_importance": feature_importance,
+        "baseline_metrics": _baseline_metrics(y, meta, train, validation, test),
     }
     return models, info
+
+
+def _baseline_metrics(y, meta, train, validation, test):
+    result = {}
+    for component in COMPONENTS:
+        result[component] = {}
+        for split_name, mask in (("validation", validation), ("test", test)):
+            prediction = np.full(int(mask.sum()), float(np.mean(y[component][train])))
+            result[component][split_name] = {
+                "mae_months": round(float(mean_absolute_error(y[component][mask], prediction)), 3),
+                "rmse_months": round(float(np.sqrt(mean_squared_error(y[component][mask], prediction))), 3),
+            }
+    return result
 
 
 def _ensure_models():
@@ -190,11 +215,12 @@ def predict_trajectory(records, step=8):
     predictions = {}
     for component, model in models.items():
         selected = features[indexes]
-        tree_predictions = np.vstack([tree.predict(selected) for tree in model.estimators_])
+        predicted = model.predict(selected)
+        residual_low, residual_high = info["validation_residual_ranges"][component]
         predictions[component] = {
-            "mean": np.clip(tree_predictions.mean(axis=0), 0, info["rul_max_months"]),
-            "low": np.clip(np.quantile(tree_predictions, 0.10, axis=0), 0, info["rul_max_months"]),
-            "high": np.clip(np.quantile(tree_predictions, 0.90, axis=0), 0, info["rul_max_months"]),
+            "mean": np.clip(predicted, 0, info["rul_max_months"]),
+            "low": np.clip(predicted + residual_low, 0, info["rul_max_months"]),
+            "high": np.clip(predicted + residual_high, 0, info["rul_max_months"]),
         }
 
     points = []
@@ -225,6 +251,5 @@ def predict_trajectory(records, step=8):
         "latest": points[-1],
         "likely_cause": points[-1]["weakest_major_component"],
         "model_info": info,
-        "note": "Component RUL is a synthetic-data estimate; it is separate from anomaly detection and is not a validated truck-life forecast.",
+        "note": "Component RUL is a synthetic-data estimate; its displayed residual range is calibrated on validation engines. It is separate from anomaly detection and is not a validated truck-life forecast.",
     }
-

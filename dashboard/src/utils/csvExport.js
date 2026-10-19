@@ -1,17 +1,17 @@
-// src/utils/csvExport.js
-//
-// Small, dependency-free CSV export. Two entry points:
-//  - toCsv(rows): array of plain objects -> CSV string. Columns are the
-//    union of keys across all rows (not just the first row's keys), so
-//    a row missing a field doesn't silently shift every column after it.
-//  - downloadCsv(filename, rows): builds the CSV and triggers a browser
-//    download via a Blob + throwaway <a download> link.
+
+
+
+
+
+
+
+
 
 function escapeCsvValue(val) {
   if (val == null) return '';
   const str = String(val);
-  // Quote (and escape internal quotes) whenever the value itself could
-  // be mistaken for a delimiter or would break a line.
+
+
   if (/[",\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }

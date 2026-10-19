@@ -113,7 +113,7 @@ export default function ComponentRulDashboard() {
         <div className="component-rul-heading">
           <div className="component-rul-kicker">COMPONENT HEALTH · SYNTHETIC BENCHMARK</div>
           <h1>Engine component life</h1>
-          <p>Five Random Forest estimates from recent sensor and operating-condition history.</p>
+          <p>Five component-life estimates from recent sensor and operating-time history.</p>
         </div>
         <div className="component-rul-controls">
           <label>
@@ -134,7 +134,7 @@ export default function ComponentRulDashboard() {
         <div className="component-rul-empty">Choose a held-out benchmark engine and run an assessment. The first run trains and caches five component models.</div>
       )}
       {loading && !assessment && (
-        <div className="component-rul-empty">Building the component forests from 210 training engines, then scoring this held-out history… The first assessment can take a few minutes.</div>
+        <div className="component-rul-empty">Training five component-life models from 210 training engines, then scoring this held-out history… The first assessment can take a few minutes.</div>
       )}
 
       {assessment && latest && (
@@ -180,15 +180,15 @@ export default function ComponentRulDashboard() {
                     </div>
                     <div className="component-rul-part-value">
                       <strong>{formatMonths(values.months)}</strong>
-                      <span>{values.range_low.toFixed(1)}–{values.range_high.toFixed(1)} mo tree spread</span>
+                    <span>{values.range_low.toFixed(1)}–{values.range_high.toFixed(1)} mo estimated range</span>
                     </div>
                     <div className="component-rul-bar"><i style={{ width: `${Math.max(2, Math.min(100, values.months / assessment.model_info.rul_max_months * 100))}%`, background: part.color }} /></div>
-                    <small>Most-used model signals: {topSignals.join(', ')}</small>
+                    <small>{topSignals.length ? `Leading signals: ${topSignals.join(', ')}` : 'Signal importance is not available for this model.'}</small>
                     {part.routine && <small className="component-rul-routine-note">Routine replacement item; excluded from likely major-part cause.</small>}
                   </button>
                 );
               })}
-              <div className="component-rul-footnote">RUL is shown across the full training-label range (up to {assessment.model_info.rul_max_months.toFixed(0)} months; no 24-month cap). Range is the 10th–90th percentile across trees, showing model disagreement rather than a formal confidence interval.</div>
+              <div className="component-rul-footnote">RUL is shown across the full training-label range (up to {assessment.model_info.rul_max_months.toFixed(0)} months; no 24-month cap). Shaded range is calibrated from the 10th–90th percentile of residuals on validation engines.</div>
             </div>
 
             <aside className="component-rul-side">
@@ -197,12 +197,12 @@ export default function ComponentRulDashboard() {
                 <h2>{likelyPart?.label}</h2>
                 <strong>{formatMonths(latest.parts[likelyCause].months)} remaining</strong>
                 <p>This is the shortest prediction among the four major parts. Treat it as a maintenance lead to inspect, not a confirmed diagnosis.</p>
-                <div className="component-rul-cause-range">Tree spread: {latest.parts[likelyCause].range_low.toFixed(1)}–{latest.parts[likelyCause].range_high.toFixed(1)} months</div>
+              <div className="component-rul-cause-range">Validation residual range: {latest.parts[likelyCause].range_low.toFixed(1)}–{latest.parts[likelyCause].range_high.toFixed(1)} months</div>
                 <div className="component-rul-cause-range">Held-out test MAE: {likelyMetrics?.mae_months ?? '—'} months</div>
               </div>
               <div className="component-rul-model-note">
                 <h3>Assessment basis</h3>
-                <p>Each forest uses six consecutive records with mean, spread, trend, and latest sensor values, plus engine operating hours and month on the engine timeline.</p>
+                <p>Each regressor uses six consecutive records with mean, spread, trend, and latest sensor values, plus engine operating hours and month on the engine timeline.</p>
                 <p>{assessment.model_info.validation_engines} validation engines and {assessment.model_info.test_engines} test engines are held out by engine ID.</p>
                 <p>Source: {assessment.model_info.dataset}. Synthetic benchmark only; not a verified forecast for a real haul truck.</p>
               </div>
@@ -211,10 +211,10 @@ export default function ComponentRulDashboard() {
 
           <section className="component-rul-panel component-rul-trend">
             <div className="component-rul-section-heading component-rul-trend-heading">
-              <div><h2>Component life through the engine cycle</h2><p>All five estimates over operating months · select a part to show its tree-spread band.</p></div>
+              <div><h2>Component life through the engine cycle</h2><p>All five estimates over operating months · select a part to show its validation-based range.</p></div>
               <label className="component-rul-part-select"><span>Spread band</span><select value={selectedPartKey} onChange={event => setSelectedPartKey(event.target.value)}>{PARTS.map(part => <option key={part.key} value={part.key}>{part.label}</option>)}</select></label>
             </div>
-            <div className="component-rul-chart-legend">{PARTS.map(part => <span key={part.key}><i style={{ background: part.color }} />{part.label}</span>)}</div>
+              <div className="component-rul-chart-legend">{PARTS.map(part => <span key={part.key}><i style={{ background: part.color }} />{part.label}</span>)}</div>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData} margin={{ top: 12, right: 16, bottom: 18, left: 8 }}>
                 <CartesianGrid stroke="#e7edf3" vertical={false} />

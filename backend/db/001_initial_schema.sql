@@ -1,5 +1,5 @@
--- Initial schema for the engine monitoring API (PostgreSQL / Supabase).
--- Run with the Supabase SQL editor or `psql "$DATABASE_URL" -f ...`.
+
+
 
 create table if not exists public.equipment (
   equipment_id text primary key,
@@ -63,8 +63,8 @@ create index if not exists alerts_active_time_idx
 create index if not exists alerts_equipment_time_idx
   on public.alerts (equipment_id, created_at desc);
 
--- Supabase RLS is enabled with no client policies: only the trusted backend
--- (using its server-side connection string) can read or write these tables.
+
+
 alter table public.equipment enable row level security;
 alter table public.sensor_readings enable row level security;
 alter table public.predictions enable row level security;

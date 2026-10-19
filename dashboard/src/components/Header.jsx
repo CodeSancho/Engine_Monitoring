@@ -1,5 +1,5 @@
 
-// src/components/Header.jsx
+
 
 function Header({
   connected,
@@ -43,7 +43,7 @@ function Header({
         <div className="header__logo">
 
           <span className="header__logo-icon">
-            
+
           </span>
 
           <div>

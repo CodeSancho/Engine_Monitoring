@@ -25,8 +25,8 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s [%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
 
-WINDOW_SIZE_CMAPSS = 30   # cycles
-WINDOW_MINUTES_ZIYA = 30  # real minutes
+WINDOW_SIZE_CMAPSS = 30
+WINDOW_MINUTES_ZIYA = 30
 STEP_SIZE = 5
 
 ZIYA_SENSORS  = ['Temperature_C','RPM','Fuel_Efficiency',
@@ -86,7 +86,7 @@ def _cmapss_derived(feats):
     return feats
 
 
-# ── ziya07: time-based windowing ────────────────────────────────────────────
+
 
 def _build_ziya_time_windows(df, window_minutes=WINDOW_MINUTES_ZIYA, normal_only=False):
     """
@@ -97,7 +97,7 @@ def _build_ziya_time_windows(df, window_minutes=WINDOW_MINUTES_ZIYA, normal_only
     sensor_cols = [c for c in ZIYA_SENSORS if c in df.columns]
     df = df.sort_values('timestamp').reset_index(drop=True)
     indexed = df.set_index('timestamp')
-    expected_rows = window_minutes // 5  # 5-min sampling interval, verified earlier
+    expected_rows = window_minutes // 5
 
     all_windows = []
     for end_time in indexed.index:
@@ -105,7 +105,7 @@ def _build_ziya_time_windows(df, window_minutes=WINDOW_MINUTES_ZIYA, normal_only
         w = indexed.loc[(indexed.index > start_time) & (indexed.index <= end_time)]
 
         if len(w) < expected_rows:
-            continue  # not a genuine full-length window
+            continue
 
         last_row_normal = (w['Fault_Condition'].iloc[-1] == 0)
         if normal_only and not last_row_normal:
@@ -113,7 +113,7 @@ def _build_ziya_time_windows(df, window_minutes=WINDOW_MINUTES_ZIYA, normal_only
 
         feats = _window_features(w, sensor_cols)
         feats = _ziya_derived(feats)
-        feats['window_label']     = int(not last_row_normal)  # labeled by LAST row, not .max()
+        feats['window_label']     = int(not last_row_normal)
         feats['fault_severity']   = int(w['Fault_Condition'].iloc[-1])
         feats['operational_mode'] = str(w['Operational_Mode'].iloc[-1]) if 'Operational_Mode' in w.columns else ''
         feats['window_end']       = end_time
@@ -136,7 +136,7 @@ def extract_ziya07_normal_features(df, window_minutes=WINDOW_MINUTES_ZIYA, step=
     return df_feat
 
 
-# ── CMAPSS: cycle-based windowing (unchanged, was already correct) ─────────
+
 
 def extract_cmapss_features(df, window_size=WINDOW_SIZE_CMAPSS, step=STEP_SIZE):
     sensor_cols = [c for c in CMAPSS_SENSORS if c in df.columns]
@@ -153,7 +153,7 @@ def extract_cmapss_features(df, window_size=WINDOW_SIZE_CMAPSS, step=STEP_SIZE):
             win = group.iloc[start:start + window_size]
             feats = _window_features(win, sensor_cols)
             feats = _cmapss_derived(feats)
-            feats['rul']       = int(win['rul'].iloc[-1])  # already last-row-labeled, correct
+            feats['rul']       = int(win['rul'].iloc[-1])
             feats['engine_id'] = int(eng_id)
             feats['cycle_end'] = int(win['cycle'].iloc[-1])
             all_windows.append(feats)
@@ -175,8 +175,8 @@ def get_feature_cols_cmapss(df):
 
 if __name__ == '__main__':
     import sys, os
-    # Portable: resolve project root from THIS file's location, not a
-    # hardcoded machine-specific path.
+
+
     ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     sys.path.insert(0, ROOT)
     from python_service.data.preprocessor import Preprocessor
