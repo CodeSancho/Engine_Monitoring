@@ -12,7 +12,7 @@ import threading
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,7 +41,7 @@ SIGNALS = [
 ]
 FEATURE_NAMES = [f"{signal}_{stat}" for stat in ("mean", "std", "slope", "latest") for signal in SIGNALS]
 FEATURE_NAMES += ["operating_hours", "month_index"]
-MODEL_VERSION = "synthetic-component-rul-v6-retrained-test-metrics"
+MODEL_VERSION = "synthetic-component-rul-random-forest-v1"
 _MODELS = None
 _MODEL_INFO = None
 _LOCK = threading.Lock()
@@ -103,9 +103,13 @@ def _fit_models():
     comparisons = {}
     rul_max_months = max(float(np.max(y[name][train])) for name in COMPONENTS)
     for index, component in enumerate(COMPONENTS):
-        model = HistGradientBoostingRegressor(max_iter=180, max_leaf_nodes=31,
-                                              learning_rate=0.06, l2_regularization=1.0,
-                                              early_stopping=False, random_state=410 + index)
+        model = RandomForestRegressor(
+            n_estimators=100,
+            max_features=1.0,
+            min_samples_leaf=2,
+            random_state=410 + index,
+            n_jobs=-1,
+        )
         model.fit(X[train], y[component][train])
         validation_prediction = model.predict(X[validation])
         comparisons[component] = [{"model": type(model).__name__,
@@ -146,11 +150,10 @@ def _fit_models():
         "metrics": metrics,
         "model_comparisons": comparisons,
         "model_parameters": {
-            "estimator": "HistGradientBoostingRegressor",
-            "iterations": 180,
-            "max_leaf_nodes": 31,
-            "learning_rate": 0.06,
-            "l2_regularization": 1.0,
+            "estimator": "RandomForestRegressor",
+            "n_estimators": 100,
+            "max_features": 1.0,
+            "min_samples_leaf": 2,
         },
         "validation_residual_ranges": residual_ranges,
         "uncertainty_method": "10th-90th percentile of residuals on engine-held-out validation data",
