@@ -52,6 +52,9 @@ export default function App() {
         : t));
     });
     socket.on('sensor_reading', data => {
+      setFleet(prev => prev.map(t => t.equipment_id === data.equipment_id
+        ? { ...t, reading_count: data.reading_count ?? (Number(t.reading_count) || 0) + 1 }
+        : t));
       setSensorHistory(prev => {
         const hist = prev[data.equipment_id] || [];
         return { ...prev, [data.equipment_id]: [...hist, { ...data.reading, ts: Date.now() }].slice(-20) };

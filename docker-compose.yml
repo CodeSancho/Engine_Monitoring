@@ -37,7 +37,7 @@ services:
     environment:
       - PORT=3000
       - FLASK_URL=http://flask_ml:5001
-      - DATA_PATH=/app/data/raw/synthetic_anomaly_records.csv
+      - DATA_PATH=/app/data/raw/demo_anomalies_clean.csv
       - SIMULATOR_SPLIT=all
       - DATABASE_URL=${DATABASE_URL:-}
       - DATABASE_SSL=${DATABASE_SSL:-true}

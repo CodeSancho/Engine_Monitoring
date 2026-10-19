@@ -78,6 +78,7 @@ const FAULT_PROFILES = {
   wheel_slip: { likely_part: 'Traction / wheel system', cause: 'Wheel slip or loss of traction' },
   mount_failure: { likely_part: 'Engine mounts', cause: 'Loose or degraded engine mounting' },
   combustion_misfire: { likely_part: 'Combustion system', cause: 'Incomplete combustion or cylinder misfire' },
+  unclassified_anomaly: { likely_part: 'Unknown', cause: 'Inspect the engine and sensor readings; the likely part is not known.' },
 };
 
 // Keep attribution tied to the synthetic anomaly labels and their sensor
@@ -98,6 +99,7 @@ const ANOMALY_TYPE_TO_PROFILE = {
   throttle_actuator_fault: 'throttle_actuator_fault', coolant_temperature_sensor: 'coolant_temperature_sensor',
   excessive_engine_load: 'excessive_engine_load', transmission_slip: 'transmission_slip', wheel_slip: 'wheel_slip',
   mount_failure: 'mount_failure', combustion_misfire: 'combustion_misfire',
+  unclassified_anomaly: 'unclassified_anomaly',
 };
 
 function inferFaultFromTelemetry(result, reading = {}) {
@@ -124,9 +126,11 @@ function inferFaultFromTelemetry(result, reading = {}) {
 }
 
 function getHighLimitBreaches(reading) {
+  const tolerance = 1e-9;
   return Object.entries(HIGH_LIMITS)
     .filter(([key, high]) => Number.isFinite(Number(reading[key]))
-      && (Number(reading[key]) > high || (LOW_LIMITS[key] !== undefined && Number(reading[key]) < LOW_LIMITS[key])))
+      && (Number(reading[key]) > high + tolerance
+        || (LOW_LIMITS[key] !== undefined && Number(reading[key]) < LOW_LIMITS[key] - tolerance)))
     .map(([key, limit]) => ({ key, limit, min: LOW_LIMITS[key], value: Number(reading[key]) }));
 }
 
@@ -367,6 +371,7 @@ function replayRows(rows, io, flaskUrl) {
         name:         engine.name,
         source_engine_id: engine.source_engine_id,
         reading,
+        reading_count: state.readingCount,
         buffer_size:  state.buffer.length,
       });
 
