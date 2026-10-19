@@ -102,15 +102,21 @@ def _fit_models():
     residual_ranges = {}
     comparisons = {}
     rul_max_months = max(float(np.max(y[name][train])) for name in COMPONENTS)
+    fit_rows = np.flatnonzero(train)
+    if len(fit_rows) > 5000:
+        # Keep cold-start retraining practical while retaining a broad sample
+        # of engine windows. Validation and test remain untouched.
+        rng = np.random.default_rng(410)
+        fit_rows = rng.choice(fit_rows, size=5000, replace=False)
     for index, component in enumerate(COMPONENTS):
         model = RandomForestRegressor(
-            n_estimators=100,
+            n_estimators=10,
             max_features=1.0,
             min_samples_leaf=2,
             random_state=410 + index,
             n_jobs=-1,
         )
-        model.fit(X[train], y[component][train])
+        model.fit(X[fit_rows], y[component][fit_rows])
         validation_prediction = model.predict(X[validation])
         comparisons[component] = [{"model": type(model).__name__,
                                    "validation_mae_months": round(float(mean_absolute_error(y[component][validation], validation_prediction)), 3)}]
@@ -151,7 +157,7 @@ def _fit_models():
         "model_comparisons": comparisons,
         "model_parameters": {
             "estimator": "RandomForestRegressor",
-            "n_estimators": 100,
+            "n_estimators": 10,
             "max_features": 1.0,
             "min_samples_leaf": 2,
         },

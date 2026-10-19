@@ -15,9 +15,14 @@ import engineCardImg from '../assets/engine-card.webp';
 
 
 const PRESETS = [
-  { key: 'bearing_wear',    label: 'Bearing wear',    sensors: [{ key: 'Vibration_X', dir: 1 }, { key: 'Vibration_Y', dir: 1 }, { key: 'Vibration_Z', dir: 1 }] },
-  { key: 'overheat',        label: 'Overheat',        sensors: [{ key: 'Temperature_C', dir: 1 }, { key: 'Fuel_Efficiency_km_per_L', dir: -1 }] },
-  { key: 'mechanical_bind', label: 'Mechanical bind', sensors: [{ key: 'Torque_Nm', dir: 1 }, { key: 'RPM', dir: -1 }] },
+  { key: 'bearing_wear', label: 'Bearing wear', cause: 'Bearing fatigue or rotating-assembly imbalance', sensors: [{ key: 'Vibration_X', dir: 1 }, { key: 'Vibration_Y', dir: 1 }, { key: 'Vibration_Z', dir: 1 }] },
+  { key: 'overheat', label: 'Overheat', cause: 'Cooling restriction, coolant loss or thermal overload', sensors: [{ key: 'Temperature_C', dir: 1 }, { key: 'Fuel_Efficiency_km_per_L', dir: -1 }] },
+  { key: 'mechanical_bind', label: 'Mechanical bind', cause: 'Drivetrain load, seizure or torque-transfer resistance', sensors: [{ key: 'Torque_Nm', dir: 1 }, { key: 'RPM', dir: -1 }] },
+  { key: 'fuel_injector', label: 'Fuel injector fault', cause: 'Poor atomisation, leaking injector or over-fuelling', sensors: [{ key: 'Fuel_Consumption_Lph', dir: 1 }, { key: 'Fuel_Efficiency_km_per_L', dir: -1 }, { key: 'Exhaust_Temp_C', dir: 1 }] },
+  { key: 'oil_starvation', label: 'Oil pressure loss', cause: 'Low oil level, pump wear, blockage or bearing clearance', sensors: [{ key: 'Oil_Pressure_kPa', dir: -1 }, { key: 'Temperature_C', dir: 1 }, { key: 'Vibration_X', dir: 1 }] },
+  { key: 'turbo_boost', label: 'Turbo / boost fault', cause: 'Turbocharger wear, intake leak or restricted air path', sensors: [{ key: 'Boost_Pressure_kPa', dir: -1 }, { key: 'Power_Output_kW', dir: -1 }, { key: 'Fuel_Consumption_Lph', dir: 1 }] },
+  { key: 'cooling_loss', label: 'Cooling system fault', cause: 'Radiator restriction, fan/pump fault or coolant loss', sensors: [{ key: 'Temperature_C', dir: 1 }, { key: 'Exhaust_Temp_C', dir: 1 }, { key: 'Fuel_Consumption_Lph', dir: 1 }] },
+  { key: 'load_resistance', label: 'Payload / resistance', cause: 'Overload, haul-road resistance or tyre/rolling condition', sensors: [{ key: 'total_resistance_pct', dir: 1 }, { key: 'payload_t', dir: 1 }, { key: 'speed_kmh', dir: -1 }] },
 ];
 const PRESET_SIGMA = 4;
 
@@ -213,8 +218,8 @@ export default function AnomalyInjector() {
           Quick-fill a realistic fault <span className="injector-section__hint">({PRESET_SIGMA}σ from real mean, then editable)</span>
         </span>
         <div className="injector-preset-row">
-          {PRESETS.map(p => (
-            <button key={p.key} className="btn-util" onClick={() => applyPreset(p)} disabled={sensorInfo.length === 0}>
+              {PRESETS.map(p => (
+            <button key={p.key} title={p.cause} className="btn-util" onClick={() => applyPreset(p)} disabled={sensorInfo.length === 0}>
               {p.label}
             </button>
           ))}
