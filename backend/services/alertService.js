@@ -9,7 +9,9 @@ const database = require('./databaseService');
 
 let alerts     = [];
 let alertIdSeq = 1;
-const activeAlertsByPart = new Map();
+// An engine can only have one active alert.  The likely part is a detail of
+// that alert, not a second dimension for creating another alert.
+const activeAlertsByEngine = new Map();
 
 function partKeyForAlert({ top_anomalous_features = [], feature_snapshot = {} }) {
   const candidates = [
@@ -18,11 +20,11 @@ function partKeyForAlert({ top_anomalous_features = [], feature_snapshot = {} })
   ];
   const groups = [
     ['bearing_rotating_assembly', /vibration/i],
-    ['fuel_system', /fuel|injector/i],
+    ['fuel_system', /fuel|injector|exhaust/i],
     ['lubrication_system', /oil_pressure/i],
     ['air_induction', /boost_pressure/i],
-    ['cooling_system', /temperature|exhaust|ambient/i],
-    ['power_output', /power_output/i],
+    ['cooling_system', /temperature|ambient/i],
+    ['turbo_air_induction', /boost|power_output/i],
     ['drivetrain', /torque|resistance|payload|speed/i],
     ['engine_speed_control', /rpm/i],
   ];
@@ -34,21 +36,25 @@ function partKeyForAlert({ top_anomalous_features = [], feature_snapshot = {} })
 }
 
 function activeKey(alert) {
-  return `${alert.equipment_id}:${alert.part_key || partKeyForAlert(alert)}`;
+  return String(alert.equipment_id);
 }
 
 function forgetActiveAlert(alert) {
   const key = activeKey(alert);
-  if (activeAlertsByPart.get(key)?.id === alert.id) activeAlertsByPart.delete(key);
+  if (activeAlertsByEngine.get(key)?.id === alert.id) activeAlertsByEngine.delete(key);
 }
 
 function initAlertStore() {
   alerts     = [];
   alertIdSeq = 1;
-  activeAlertsByPart.clear();
+  activeAlertsByEngine.clear();
   if (database.isDatabaseEnabled()) {
     database.getAlerts({ activeOnly: true, limit: 500 }).then(rows => {
-      for (const alert of rows || []) activeAlertsByPart.set(activeKey(alert), alert);
+      for (const alert of rows || []) {
+        // If old data contains multiple active alerts for an engine, keep the
+        // newest one in the in-memory index so new readings consolidate there.
+        if (!activeAlertsByEngine.has(activeKey(alert))) activeAlertsByEngine.set(activeKey(alert), alert);
+      }
     }).catch(err => console.error('[Database] Could not load active alert keys:', err.message));
   }
   console.log('[AlertService] Initialised');
@@ -57,14 +63,12 @@ function initAlertStore() {
 function createAlert({ equipment_id, severity, anomaly_score, message, feature_snapshot, top_anomalous_features }) {
   const details = { equipment_id, feature_snapshot: feature_snapshot || {}, top_anomalous_features: top_anomalous_features || [] };
   const part_key = partKeyForAlert(details);
-  const key = `${equipment_id}:${part_key}`;
-  const existing = activeAlertsByPart.get(key);
+  const key = String(equipment_id);
+  const existing = activeAlertsByEngine.get(key);
   if (existing) {
-    existing.anomaly_score = anomaly_score;
-    existing.message = message;
-    existing.feature_snapshot = details.feature_snapshot;
-    existing.top_anomalous_features = details.top_anomalous_features;
-    existing.last_seen_at = new Date().toISOString();
+    // An alert is an immutable snapshot of the first detected event. Later
+    // readings may count as occurrences, but must not rewrite its diagnosis,
+    // score, message, or sensor values.
     existing.occurrences = (existing.occurrences || 1) + 1;
     return { ...existing, is_duplicate: true };
   }
@@ -83,7 +87,7 @@ function createAlert({ equipment_id, severity, anomaly_score, message, feature_s
     acknowledged_at: null,
   };
   alerts.push(alert);
-  activeAlertsByPart.set(key, alert);
+  activeAlertsByEngine.set(key, alert);
   if (database.isDatabaseEnabled()) {
     database.createAlertRecord(alert).then(persisted => {
       if (persisted) alert.id = persisted.id;
@@ -95,10 +99,22 @@ function createAlert({ equipment_id, severity, anomaly_score, message, feature_s
 
 async function listActiveAlerts() {
   if (database.isDatabaseEnabled()) {
-    try { return await database.getAlerts({ activeOnly: true, limit: 500 }); }
+    try {
+      const rows = await database.getAlerts({ activeOnly: true, limit: 500 });
+      return uniqueActiveAlertsByEngine(rows);
+    }
     catch (err) { console.error('[Database] Could not load active alerts:', err.message); }
   }
   return getActiveAlerts();
+}
+
+function uniqueActiveAlertsByEngine(rows) {
+  const byEngine = new Map();
+  for (const alert of rows || []) {
+    // Database results are newest first; retain only one alert per engine.
+    if (!byEngine.has(String(alert.equipment_id))) byEngine.set(String(alert.equipment_id), alert);
+  }
+  return [...byEngine.values()];
 }
 
 async function listAllAlerts({ limit = 50 } = {}) {
@@ -135,7 +151,7 @@ async function acknowledgeAllAlerts() {
   if (database.isDatabaseEnabled()) {
     try {
       const cleared = await database.acknowledgeAllAlertRecords();
-      activeAlertsByPart.clear();
+      activeAlertsByEngine.clear();
       return cleared;
     }
     catch (err) { console.error('[Database] Could not clear active alerts:', err.message); }
@@ -148,16 +164,15 @@ async function acknowledgeAllAlerts() {
       cleared.push(alert);
     }
   }
-  activeAlertsByPart.clear();
+  activeAlertsByEngine.clear();
   return cleared;
 }
 
 function getActiveAlerts() {
-  return alerts
-    .filter(a => !a.acknowledged)
-
-
-    .sort((a, b) => (b.anomaly_score ?? 0) - (a.anomaly_score ?? 0));
+  return uniqueActiveAlertsByEngine(
+    alerts.filter(a => !a.acknowledged)
+      .sort((a, b) => (b.anomaly_score ?? 0) - (a.anomaly_score ?? 0))
+  );
 }
 
 function getAllAlerts({ limit = 50 } = {}) {

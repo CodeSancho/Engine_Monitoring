@@ -21,9 +21,9 @@ router.get('/sensor-info', (req, res) => {
 
 
 router.post('/', (req, res) => {
-  const { equipment_id, sensors } = req.body;
+  const { equipment_id, sensors, profile } = req.body;
   try {
-    const result = injectAnomaly({ equipment_id, sensors, io: req.app.get('io') });
+    const result = injectAnomaly({ equipment_id, sensors, profile, io: req.app.get('io') });
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });

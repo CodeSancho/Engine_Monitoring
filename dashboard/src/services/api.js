@@ -34,8 +34,8 @@ export const fetchComponentRul = engineId => api.get(`/api/component-rul/${engin
 
 
 
-export const injectAnomaly = ({ equipment_id, sensors }) =>
-  api.post('/api/inject', { equipment_id, sensors }).then(r => r.data);
+export const injectAnomaly = ({ equipment_id, sensors, profile }) =>
+  api.post('/api/inject', { equipment_id, sensors, profile }).then(r => r.data);
 
 
 

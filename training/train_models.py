@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from synthetic_anomaly_pipeline import (
+from python_service.data.synthetic_anomaly_pipeline import (
     SENSOR_COLUMNS as ANOMALY_SENSOR_COLUMNS,
     WINDOW_SIZE as ANOMALY_WINDOW_SIZE,
     build_windows as build_anomaly_windows,

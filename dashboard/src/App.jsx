@@ -8,9 +8,11 @@ import Header          from './components/Header';
 import ModelInfo       from './components/ModelInfo';
 import ComponentRulDashboard from './components/ComponentRulDashboard';
 import AnomalyInjector from './components/Anomalyinjector';
+import Login from './components/Login';
 import './index.css';
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState(() => sessionStorage.getItem('engine-monitoring-auth') === 'true');
   const [view,         setView]         = useState('fleet');
   const [selectedTruck,setSelectedTruck]= useState(null);
   const [fleet,        setFleet]        = useState([]);
@@ -40,9 +42,12 @@ export default function App() {
     socket.on('disconnect', () => setConnected(false));
     socket.on('prediction', data => {
       setPredictions(prev => ({ ...prev, [data.equipment_id]: data }));
+      const fleetMessage = String(data.message || '')
+        .replace(/\s*Likely part:.*?\.\s*Cause:.*?\.?$/i, '')
+        .trim();
       setFleet(prev => prev.map(t => t.equipment_id === data.equipment_id
         ? { ...t, severity: data.severity, anomaly_score: data.anomaly_score,
-            message: data.message,
+            message: fleetMessage,
             reading_count: data.reading_count, feature_snapshot: data.feature_snapshot }
         : t));
     });
@@ -93,10 +98,13 @@ export default function App() {
   };
   const goFleet   = ()  => { setView('fleet'); setSelectedTruck(null); };
 
+  if (!authenticated) return <Login onLogin={() => { sessionStorage.setItem('engine-monitoring-auth', 'true'); setAuthenticated(true); }} />;
+
   return (
     <div className="app">
       <Header connected={connected} activeAlerts={activeAlertCount}
-        view={view} setView={setView} goFleet={goFleet} />
+        view={view} setView={setView} goFleet={goFleet}
+        onLogout={() => { sessionStorage.removeItem('engine-monitoring-auth'); setAuthenticated(false); }} />
       <main className="main-content">
         {view === 'fleet'  && <FleetOverview fleet={sorted} predictions={predictions} onSelectTruck={openTruck} />}
         {view === 'truck'  && selectedTruck && <TruckDetail truckId={selectedTruck} fleet={fleet}

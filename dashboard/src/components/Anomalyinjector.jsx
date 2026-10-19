@@ -33,6 +33,7 @@ export default function AnomalyInjector() {
   const [infoError, setInfoError]     = useState(false);
   const [values, setValues]           = useState({});
   const [status, setStatus]           = useState(null);
+  const [profile, setProfile]         = useState('custom');
   const [loading, setLoading]         = useState(false);
   const pollRef = useRef(null);
   const awaitingRef = useRef(null);
@@ -110,6 +111,7 @@ export default function AnomalyInjector() {
   };
 
   const applyPreset = (preset) => {
+    setProfile(preset.key);
     setValues(prev => {
       const next = { ...prev };
       preset.sensors.forEach(({ key, dir }) => {
@@ -140,7 +142,7 @@ export default function AnomalyInjector() {
     setLoading(true);
     setStatus(null);
     awaitingRef.current = { equipmentId, fields: sensors.map(sensor => sensor.key) };
-    injectAnomaly({ equipment_id: equipmentId, sensors })
+    injectAnomaly({ equipment_id: equipmentId, sensors, profile })
       .then(res => {
         if (res.high_limit_alert) {
           awaitingRef.current = null;

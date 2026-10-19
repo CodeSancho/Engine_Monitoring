@@ -1,5 +1,5 @@
 {
-  "version": "synthetic-component-rul-v6-retrained-test-metrics",
+  "version": "synthetic-component-rul-random-forest-v1",
   "dataset": "synthetic_component_rul.csv",
   "engines": 300,
   "window_records": 6,
@@ -12,123 +12,227 @@
   "metrics": {
     "main_bearings": {
       "validation": {
-        "mae_months": 5.474,
-        "rmse_months": 7.407
+        "mae_months": 5.813,
+        "rmse_months": 7.81
       },
       "test": {
-        "mae_months": 4.957,
-        "rmse_months": 6.634
+        "mae_months": 5.302,
+        "rmse_months": 7.128
       }
     },
     "fuel_injectors": {
       "validation": {
-        "mae_months": 2.543,
-        "rmse_months": 3.324
+        "mae_months": 2.907,
+        "rmse_months": 3.809
       },
       "test": {
-        "mae_months": 2.571,
-        "rmse_months": 3.364
+        "mae_months": 2.959,
+        "rmse_months": 3.879
       }
     },
     "turbocharger": {
       "validation": {
-        "mae_months": 5.201,
-        "rmse_months": 6.856
+        "mae_months": 5.399,
+        "rmse_months": 7.152
       },
       "test": {
-        "mae_months": 5.13,
-        "rmse_months": 6.731
+        "mae_months": 5.289,
+        "rmse_months": 7.017
       }
     },
     "cooling_system": {
       "validation": {
-        "mae_months": 5.558,
-        "rmse_months": 7.46
+        "mae_months": 5.845,
+        "rmse_months": 7.827
       },
       "test": {
-        "mae_months": 5.613,
-        "rmse_months": 7.455
+        "mae_months": 5.9,
+        "rmse_months": 7.841
       }
     },
     "air_filter": {
       "validation": {
-        "mae_months": 0.359,
-        "rmse_months": 0.446
+        "mae_months": 0.403,
+        "rmse_months": 0.505
       },
       "test": {
-        "mae_months": 0.363,
-        "rmse_months": 0.451
+        "mae_months": 0.408,
+        "rmse_months": 0.511
       }
     }
   },
   "model_comparisons": {
     "main_bearings": [
       {
-        "model": "HistGradientBoostingRegressor",
-        "validation_mae_months": 5.474
+        "model": "RandomForestRegressor",
+        "validation_mae_months": 5.813
       }
     ],
     "fuel_injectors": [
       {
-        "model": "HistGradientBoostingRegressor",
-        "validation_mae_months": 2.543
+        "model": "RandomForestRegressor",
+        "validation_mae_months": 2.907
       }
     ],
     "turbocharger": [
       {
-        "model": "HistGradientBoostingRegressor",
-        "validation_mae_months": 5.201
+        "model": "RandomForestRegressor",
+        "validation_mae_months": 5.399
       }
     ],
     "cooling_system": [
       {
-        "model": "HistGradientBoostingRegressor",
-        "validation_mae_months": 5.558
+        "model": "RandomForestRegressor",
+        "validation_mae_months": 5.845
       }
     ],
     "air_filter": [
       {
-        "model": "HistGradientBoostingRegressor",
-        "validation_mae_months": 0.359
+        "model": "RandomForestRegressor",
+        "validation_mae_months": 0.403
       }
     ]
   },
   "model_parameters": {
-    "estimator": "HistGradientBoostingRegressor",
-    "iterations": 180,
-    "max_leaf_nodes": 31,
-    "learning_rate": 0.06,
-    "l2_regularization": 1.0
+    "estimator": "RandomForestRegressor",
+    "n_estimators": 10,
+    "max_features": 1.0,
+    "min_samples_leaf": 2
   },
   "validation_residual_ranges": {
     "main_bearings": [
-      -8.768876519842388,
-      10.808696430224552
+      -9.29310081345694,
+      11.425550849278771
     ],
     "fuel_injectors": [
-      -4.320744583762276,
-      4.457807056859939
+      -4.654125277927943,
+      5.403387018101556
     ],
     "turbocharger": [
-      -8.416453077530695,
-      9.915203152164988
+      -8.757110606783915,
+      10.069107014338176
     ],
     "cooling_system": [
-      -9.06354091426177,
-      10.202190248506989
+      -9.829470036824544,
+      10.660459918022159
     ],
     "air_filter": [
-      -0.5630126297162986,
-      0.6023630668031194
+      -0.6306067181428273,
+      0.6560166337944214
     ]
   },
   "uncertainty_method": "10th-90th percentile of residuals on engine-held-out validation data",
   "feature_importance": {
-    "main_bearings": [],
-    "fuel_injectors": [],
-    "turbocharger": [],
-    "cooling_system": [],
-    "air_filter": []
+    "main_bearings": [
+      {
+        "feature": "Vibration_Z_latest",
+        "importance": 0.55544
+      },
+      {
+        "feature": "Vibration_X_slope",
+        "importance": 0.03287
+      },
+      {
+        "feature": "Vibration_X_latest",
+        "importance": 0.02471
+      },
+      {
+        "feature": "Vibration_Y_latest",
+        "importance": 0.02303
+      },
+      {
+        "feature": "Vibration_Z_slope",
+        "importance": 0.0159
+      }
+    ],
+    "fuel_injectors": [
+      {
+        "feature": "Fuel_Consumption_Lph_latest",
+        "importance": 0.32863
+      },
+      {
+        "feature": "Fuel_Consumption_Lph_mean",
+        "importance": 0.08169
+      },
+      {
+        "feature": "Exhaust_Temp_C_latest",
+        "importance": 0.05971
+      },
+      {
+        "feature": "Boost_Pressure_kPa_latest",
+        "importance": 0.03831
+      },
+      {
+        "feature": "payload_t_mean",
+        "importance": 0.03406
+      }
+    ],
+    "turbocharger": [
+      {
+        "feature": "Boost_Pressure_kPa_latest",
+        "importance": 0.45686
+      },
+      {
+        "feature": "Boost_Pressure_kPa_mean",
+        "importance": 0.07193
+      },
+      {
+        "feature": "Boost_Pressure_kPa_std",
+        "importance": 0.04519
+      },
+      {
+        "feature": "RPM_mean",
+        "importance": 0.02243
+      },
+      {
+        "feature": "Power_Output_kW_latest",
+        "importance": 0.01298
+      }
+    ],
+    "cooling_system": [
+      {
+        "feature": "Temperature_C_latest",
+        "importance": 0.55909
+      },
+      {
+        "feature": "Temperature_C_std",
+        "importance": 0.03479
+      },
+      {
+        "feature": "Temperature_C_mean",
+        "importance": 0.01805
+      },
+      {
+        "feature": "Temperature_C_slope",
+        "importance": 0.0153
+      },
+      {
+        "feature": "Boost_Pressure_kPa_mean",
+        "importance": 0.01463
+      }
+    ],
+    "air_filter": [
+      {
+        "feature": "Boost_Pressure_kPa_slope",
+        "importance": 0.50816
+      },
+      {
+        "feature": "Boost_Pressure_kPa_std",
+        "importance": 0.07802
+      },
+      {
+        "feature": "Exhaust_Temp_C_std",
+        "importance": 0.03128
+      },
+      {
+        "feature": "Boost_Pressure_kPa_latest",
+        "importance": 0.0245
+      },
+      {
+        "feature": "total_resistance_pct_slope",
+        "importance": 0.02331
+      }
+    ]
   },
   "baseline_metrics": {
     "main_bearings": {

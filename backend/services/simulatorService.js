@@ -39,6 +39,90 @@ const LOW_LIMITS = { Temperature_C: -50, RPM: 0, Vibration_X: -10, Vibration_Y: 
   Oil_Pressure_kPa: -500, Boost_Pressure_kPa: -100, payload_t: 0,
   speed_kmh: 0, total_resistance_pct: 0, ambient_C: -50 };
 
+const FAULT_PROFILES = {
+  bearing_wear: { likely_part: 'Bearing / rotating assembly', cause: 'Bearing fatigue, imbalance or shaft wear' },
+  overheating: { likely_part: 'Cooling system', cause: 'Coolant loss, radiator restriction or thermal overload' },
+  overheat: { likely_part: 'Cooling system', cause: 'Coolant loss, radiator restriction or thermal overload' },
+  mechanical_binding: { likely_part: 'Drivetrain / transmission', cause: 'Torque-converter, clutch or driveline binding' },
+  mechanical_bind: { likely_part: 'Drivetrain / transmission', cause: 'Torque-converter, clutch or driveline binding' },
+  injector_fault: { likely_part: 'Fuel injection system', cause: 'Poor atomisation, leaking injector or over-fuelling' },
+  fuel_injector: { likely_part: 'Fuel injection system', cause: 'Poor atomisation, leaking injector or over-fuelling' },
+  oil_pressure_drop: { likely_part: 'Lubrication system', cause: 'Low oil level, pump wear, blockage or bearing clearance' },
+  oil_starvation: { likely_part: 'Lubrication system', cause: 'Low oil level, pump wear, blockage or bearing clearance' },
+  turbo_loss: { likely_part: 'Turbocharger / air induction', cause: 'Turbo wear, intake leak or restricted air path' },
+  turbo_boost: { likely_part: 'Turbocharger / air induction', cause: 'Turbo wear, intake leak or restricted air path' },
+  cooling_loss: { likely_part: 'Cooling system', cause: 'Radiator, fan, coolant pump or coolant circuit fault' },
+  load_resistance: { likely_part: 'Haul load / drivetrain', cause: 'Overload, haul-road resistance or rolling condition' },
+  sensor_fault: { likely_part: 'Sensor / instrumentation', cause: 'Sensor drift, wiring fault or implausible telemetry' },
+  coolant_leak: { likely_part: 'Cooling system', cause: 'Coolant leak or loss of cooling-system pressure' },
+  radiator_restriction: { likely_part: 'Radiator / cooling circuit', cause: 'Restricted radiator airflow or coolant passage' },
+  fan_failure: { likely_part: 'Cooling fan system', cause: 'Fan, belt or fan-control failure' },
+  thermostat_stuck: { likely_part: 'Thermostat', cause: 'Thermostat stuck open or closed' },
+  oil_filter_blockage: { likely_part: 'Oil filter / lubrication circuit', cause: 'Restricted filter or lubrication passage' },
+  oil_pump_wear: { likely_part: 'Oil pump', cause: 'Worn pump or inadequate oil delivery' },
+  fuel_pressure_loss: { likely_part: 'Fuel delivery system', cause: 'Low rail pressure, pump wear or restricted filter' },
+  fuel_filter_blockage: { likely_part: 'Fuel filter', cause: 'Restricted fuel flow through the filter' },
+  injector_sticking: { likely_part: 'Fuel injector', cause: 'Injector sticking, fouling or poor atomisation' },
+  air_filter_blockage: { likely_part: 'Air filter / intake', cause: 'Restricted intake airflow' },
+  intake_leak: { likely_part: 'Intake air system', cause: 'Unmetered air leak or charge-air hose failure' },
+  exhaust_restriction: { likely_part: 'Exhaust system', cause: 'Restricted exhaust flow or after-treatment blockage' },
+  turbo_bearing_wear: { likely_part: 'Turbocharger bearings', cause: 'Turbo shaft or bearing wear' },
+  alternator_fault: { likely_part: 'Charging system', cause: 'Alternator output or belt-drive fault' },
+  battery_voltage_drop: { likely_part: 'Battery / starting system', cause: 'Low battery voltage or connection resistance' },
+  crankshaft_speed_sensor: { likely_part: 'Crankshaft speed sensor', cause: 'Intermittent or implausible crankshaft signal' },
+  camshaft_timing_fault: { likely_part: 'Camshaft timing system', cause: 'Timing sensor, actuator or synchronization fault' },
+  throttle_actuator_fault: { likely_part: 'Throttle actuator', cause: 'Throttle position or actuator response fault' },
+  coolant_temperature_sensor: { likely_part: 'Coolant temperature sensor', cause: 'Temperature-sensor drift or wiring fault' },
+  excessive_engine_load: { likely_part: 'Engine load system', cause: 'Sustained load beyond the expected operating envelope' },
+  transmission_slip: { likely_part: 'Transmission / clutch', cause: 'Clutch or transmission slip under load' },
+  wheel_slip: { likely_part: 'Traction / wheel system', cause: 'Wheel slip or loss of traction' },
+  mount_failure: { likely_part: 'Engine mounts', cause: 'Loose or degraded engine mounting' },
+  combustion_misfire: { likely_part: 'Combustion system', cause: 'Incomplete combustion or cylinder misfire' },
+};
+
+// Keep attribution tied to the synthetic anomaly labels and their sensor
+// signatures.  Drivetrain is a specific outcome, never the generic fallback.
+const ANOMALY_TYPE_TO_PROFILE = {
+  bearing_wear: 'bearing_wear', overheating: 'overheating', overheat: 'overheat',
+  mechanical_binding: 'mechanical_binding', mechanical_bind: 'mechanical_bind',
+  injector_fault: 'injector_fault', fuel_injector: 'fuel_injector',
+  oil_pressure_drop: 'oil_pressure_drop', oil_starvation: 'oil_starvation',
+  turbo_loss: 'turbo_loss', turbo_boost: 'turbo_boost', cooling_loss: 'cooling_loss',
+  load_resistance: 'load_resistance', sensor_fault: 'sensor_fault',
+  coolant_leak: 'coolant_leak', radiator_restriction: 'radiator_restriction', fan_failure: 'fan_failure',
+  thermostat_stuck: 'thermostat_stuck', oil_filter_blockage: 'oil_filter_blockage', oil_pump_wear: 'oil_pump_wear',
+  fuel_pressure_loss: 'fuel_pressure_loss', fuel_filter_blockage: 'fuel_filter_blockage', injector_sticking: 'injector_sticking',
+  air_filter_blockage: 'air_filter_blockage', intake_leak: 'intake_leak', exhaust_restriction: 'exhaust_restriction',
+  turbo_bearing_wear: 'turbo_bearing_wear', alternator_fault: 'alternator_fault', battery_voltage_drop: 'battery_voltage_drop',
+  crankshaft_speed_sensor: 'crankshaft_speed_sensor', camshaft_timing_fault: 'camshaft_timing_fault',
+  throttle_actuator_fault: 'throttle_actuator_fault', coolant_temperature_sensor: 'coolant_temperature_sensor',
+  excessive_engine_load: 'excessive_engine_load', transmission_slip: 'transmission_slip', wheel_slip: 'wheel_slip',
+  mount_failure: 'mount_failure', combustion_misfire: 'combustion_misfire',
+};
+
+function inferFaultFromTelemetry(result, reading = {}) {
+  const type = String(reading.anomaly_type || '').toLowerCase().replace(/\s+/g, '_');
+  const labelledProfile = ANOMALY_TYPE_TO_PROFILE[type];
+  if (labelledProfile) return { profile: labelledProfile, ...FAULT_PROFILES[labelledProfile] };
+
+  // Do not inspect every snapshot key here: vibration_magnitude is present in
+  // every prediction, which incorrectly made bearing wear win most fallbacks.
+  // Only features the model actually ranked as anomalous should influence the
+  // fallback attribution. Explicit CSV labels still take precedence above.
+  const text = (result.top_anomalous_features || []).join(' ').toLowerCase();
+  const candidates = [
+    ['bearing_wear', /vibration|bearing/],
+    ['fuel_injector', /fuel|injector|exhaust/],
+    ['oil_starvation', /oil|pressure/],
+    ['turbo_boost', /boost|power_output/],
+    ['cooling_loss', /temperature|cooling/],
+    ['load_resistance', /payload|resistance|speed/],
+    ['mechanical_bind', /torque|rpm/],
+  ];
+  const match = candidates.find(([, pattern]) => pattern.test(text));
+  return match ? { profile: match[0], ...FAULT_PROFILES[match[0]] } : null;
+}
+
 function getHighLimitBreaches(reading) {
   return Object.entries(HIGH_LIMITS)
     .filter(([key, high]) => Number.isFinite(Number(reading[key]))
@@ -62,12 +146,21 @@ function createHighLimitAlert(engine, reading, io) {
   const signature = breaches.map(({ key, value }) => `${key}:${value}`).join('|');
   if (state?.highLimitAlertSignature === signature) return state.highLimitAlert || null;
   if (state) state.highLimitAlertSignature = signature;
+  const injectedFault = state?.injectedFault;
+  const feature_snapshot = {
+    ...Object.fromEntries(breaches.map(({ key, value }) => [key, value])),
+    ...(injectedFault?.likely_part ? { likely_part: injectedFault.likely_part } : {}),
+    ...(injectedFault?.cause ? { likely_cause: injectedFault.cause } : {}),
+  };
+  const alertMessage = injectedFault?.likely_part
+    ? `Likely part: ${injectedFault.likely_part}. Cause: ${injectedFault.cause}.`
+    : `Sensor safety bound exceeded: ${details.join('; ')}.`;
   const alert = createAlert({
     equipment_id: engine.id,
     severity: 'CRITICAL',
     anomaly_score: 0.98,
-    message: `Sensor safety bound exceeded: ${details.join('; ')}.`,
-    feature_snapshot: Object.fromEntries(breaches.map(({ key, value }) => [key, value])),
+    message: alertMessage,
+    feature_snapshot,
     top_anomalous_features: details,
   });
   if (state) state.highLimitAlert = alert;
@@ -96,7 +189,7 @@ function registerEngine(engine) {
   ENGINES.push(engine);
   engineState[engine.id] = {
     buffer: [], cursor: 0, latestResult: null, readingCount: 0, info: engine,
-    emittedEventIds: new Set(),
+    emittedEventIds: new Set(), injectedFault: null,
   };
   fleetStatus[engine.id] = {
     equipment_id: engine.id, name: engine.name,
@@ -256,7 +349,11 @@ function replayRows(rows, io, flaskUrl) {
           reading[key] = value.toFixed(SENSOR_DECIMALS[key]);
         }
         state.pendingInjectedReadings--;
-        if (state.pendingInjectedReadings === 0) state.injectionTargets = [];
+        if (state.pendingInjectedReadings === 0) {
+          state.injectionTargets = [];
+          // Keep the profile until this reading's prediction is processed;
+          // the final injected window reading must still carry its diagnosis.
+        }
       }
       state.readingCount++;
 
@@ -279,6 +376,14 @@ function replayRows(rows, io, flaskUrl) {
         const result = await callPredictor(engine.id, state.buffer, flaskUrl);
 
         if (result) {
+          const inferredFault = state.injectedFault || inferFaultFromTelemetry(result, reading);
+          if (inferredFault) {
+            result.likely_part = inferredFault.likely_part;
+            result.likely_cause = inferredFault.cause;
+            result.fault_profile = inferredFault.profile;
+            result.message = `${result.message} Likely part: ${result.likely_part}. Cause: ${result.likely_cause}.`;
+            result.feature_snapshot = { ...(result.feature_snapshot || {}), likely_part: result.likely_part, likely_cause: result.likely_cause };
+          }
           state.latestResult = result;
 
           const highBreaches = getHighLimitBreaches(reading);
@@ -298,6 +403,12 @@ function replayRows(rows, io, flaskUrl) {
           const effectiveMessage = highBreaches.length
             ? `Sensor safety bound exceeded: ${highBreaches.map(({ key, limit, min, value }) => `${key} ${value} is outside ${min === undefined ? 'no lower bound' : min} to ${limit}`).join('; ')}.`
             : result.message;
+          // Fleet cards show operating status only. Keep the detailed likely
+          // part/cause in the alert and prediction payloads, not as a repeated
+          // fleet-wide headline.
+          const fleetMessage = effectiveMessage
+            .replace(/\s*Likely part:.*?\.\s*Cause:.*?\.?$/i, '')
+            .trim();
 
           if (database.isDatabaseEnabled()) {
             database.savePrediction(engine.id, engine.name, {
@@ -314,7 +425,7 @@ function replayRows(rows, io, flaskUrl) {
             source_engine_id: engine.source_engine_id,
             severity:      effectiveSeverity,
             anomaly_score: effectiveScore,
-            message:       effectiveMessage,
+            message:       fleetMessage,
             last_reading:  reading,
             reading_count: state.readingCount,
             top_features:  result.top_anomalous_features,
@@ -335,6 +446,12 @@ function replayRows(rows, io, flaskUrl) {
             io.emit(alert.is_duplicate ? 'alert_updated' : 'new_alert', alert);
           }
 
+          // The final injected window has now been classified. Future rows
+          // must return to their own CSV anomaly labels/evidence.
+          if (state.pendingInjectedReadings === 0 && state.injectedFault && !state.injectionTargets.length) {
+            state.injectedFault = null;
+          }
+
           io.emit('prediction', {
             equipment_id:     engine.id,
             name:             engine.name,
@@ -347,6 +464,7 @@ function replayRows(rows, io, flaskUrl) {
             source_event_type: reading.anomaly_type,
             source_split: reading.split,
           });
+          if (state.injectedFault) state.injectedFault = null;
 
           const scoreLabel = Number.isFinite(effectiveScore)
             ? effectiveScore.toFixed(5) : 'not-applicable';
@@ -419,7 +537,7 @@ function getSensorInfo() {
 
 
 
-function injectAnomaly({ equipment_id, sensors, io }) {
+function injectAnomaly({ equipment_id, sensors, profile, io }) {
   const state = engineState[equipment_id];
   if (!state) throw new Error(`Unknown engine: ${equipment_id}`);
   if (state.buffer.length === 0) throw new Error(`${equipment_id}'s buffer is empty -- wait for the simulator to warm up`);
@@ -434,6 +552,10 @@ function injectAnomaly({ equipment_id, sensors, io }) {
     if (!Number.isFinite(value)) throw new Error(`Value for ${key} must be a finite number, got: ${s.value}`);
     return { key, value };
   });
+  const fault = FAULT_PROFILES[profile] || inferFaultFromTelemetry(
+    { top_anomalous_features: targets.map(target => target.key), feature_snapshot: {} },
+    {}
+  ) || null;
 
   state.buffer = state.buffer.map(reading => {
     const r = { ...reading };
@@ -449,6 +571,7 @@ function injectAnomaly({ equipment_id, sensors, io }) {
   const latestReading = state.buffer[state.buffer.length - 1];
   const highLimitAlert = createHighLimitAlert(state.info, latestReading, io);
   state.injectionTargets = targets;
+  state.injectedFault = fault ? { profile: profile || 'custom', ...fault } : null;
   state.pendingInjectedReadings = Math.max(state.pendingInjectedReadings || 0, WINDOW_SIZE);
 
   const fieldsChanged = targets.map(t => t.key);
@@ -461,6 +584,9 @@ function injectAnomaly({ equipment_id, sensors, io }) {
     buffer_size: state.buffer.length,
     readings_affected: state.buffer.length,
     fields_changed: fieldsChanged,
+    likely_part: fault?.likely_part || null,
+    likely_cause: fault?.cause || null,
+    fault_profile: profile || 'custom',
     high_limit_alert: highLimitAlert,
   };
 }

@@ -483,7 +483,7 @@
       "threshold": -0.42955192256273883
     }
   ],
-  "threshold_policy": "Validation selection first prefers precision and recall both at least 0.70, then maximizes the lower of precision and recall, followed by F1 and lower false-alarm rate; test engines are reserved for final evaluation",
+  "threshold_policy": "Validation selection first prefers precision and recall both at least 0.70, then maximizes the lower of precision and recall, followed by F1 and lower false-alarm rate; test engines are reserved for final evaluation.",
   "decision_threshold": -0.42955192256273883,
   "decision_threshold_score_samples": -0.42955192256273883,
   "validation_false_alarm_rate": 0.023868,

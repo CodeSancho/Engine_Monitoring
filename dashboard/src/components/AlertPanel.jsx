@@ -14,6 +14,8 @@ function AlertCard({ alert, engineLabel, onAcknowledge, onSelectTruck }) {
     : ['WARNING', 'ANOMALY'].includes(alert.severity) ? 'CRITICAL' : alert.severity;
   const topFeature = alert.top_anomalous_features?.[0];
   const comp = topFeature ? getComponentInfo(topFeature) : null;
+  const likelyPart = snap.likely_part || alert.likely_part;
+  const likelyCause = snap.likely_cause || alert.likely_cause;
 
   async function handleAck() {
     try {
@@ -50,10 +52,10 @@ function AlertCard({ alert, engineLabel, onAcknowledge, onSelectTruck }) {
         </div>
       )}
 
-      {comp && (
+      {(likelyPart || comp) && (
         <div className="alert-card__component" style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-          Likely part: <strong style={{ color: 'var(--text)' }}>{comp.component}</strong> ({comp.detail})
-          <div style={{ fontSize: 11, marginTop: 2 }}>{comp.note}</div>
+          Likely part: <strong style={{ color: 'var(--text)' }}>{likelyPart || comp.component}</strong>
+          {likelyCause ? <div style={{ fontSize: 11, marginTop: 2 }}>Possible cause: {likelyCause}</div> : <><span> ({comp.detail})</span><div style={{ fontSize: 11, marginTop: 2 }}>{comp.note}</div></>}
         </div>
       )}
 

@@ -7,6 +7,7 @@ function Header({
   view,
   setView,
   goFleet,
+  onLogout,
 }) {
   const navBtn = (label, key, badge) => {
     return (
@@ -102,6 +103,7 @@ function Header({
 
           {connected ? 'Live' : 'Offline'}
         </span>
+        <button className="header-logout" onClick={onLogout}>Sign out</button>
 
       </div>
 
