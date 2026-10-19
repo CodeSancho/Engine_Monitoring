@@ -16,8 +16,8 @@ const database = require('./databaseService');
 // Bound the default replay workload. Raise ENGINE_COUNT (up to 100) to run
 // more source engines after checking the host/database capacity.
 const ENGINE_COUNT = Math.min(100, Math.max(1, Number.parseInt(process.env.ENGINE_COUNT, 10) || 20));
+const SIMULATOR_SPLIT = (process.env.SIMULATOR_SPLIT || 'test').toLowerCase();
 let ENGINES = [];
-let usesSourceLabels = false;
 
 const WINDOW_SIZE    = 30;   // readings per prediction window
 const EMIT_INTERVAL  = 1500; // ms between readings (1.5s = fast demo)
@@ -26,20 +26,25 @@ const EMIT_INTERVAL  = 1500; // ms between readings (1.5s = fast demo)
 // responsibility; these limits catch an over-range sensor even when the
 // window-level anomaly model does not flag it.
 const HIGH_LIMITS = {
-  Temperature_C: 120,
-  RPM: 4000,
-  Vibration_X: 1,
-  Vibration_Y: 1,
-  Vibration_Z: 1,
-  Torque_Nm: 200,
-  Fuel_Efficiency: 30,
-  Power_Output_kW: 100,
+  Temperature_C: 250, RPM: 3000,
+  Vibration_X: 10, Vibration_Y: 10, Vibration_Z: 10,
+  Torque_Nm: 20000, Fuel_Efficiency_km_per_L: 10,
+  Power_Output_kW: 4000, Exhaust_Temp_C: 1000,
+  Fuel_Consumption_Lph: 500, Oil_Pressure_kPa: 2000,
+  Boost_Pressure_kPa: 500, payload_t: 500, speed_kmh: 100,
+  total_resistance_pct: 100, ambient_C: 80,
 };
+const LOW_LIMITS = { Temperature_C: -50, RPM: 0, Vibration_X: -10, Vibration_Y: -10,
+  Vibration_Z: -10, Torque_Nm: 0, Fuel_Efficiency_km_per_L: 0,
+  Power_Output_kW: 0, Exhaust_Temp_C: 0, Fuel_Consumption_Lph: 0,
+  Oil_Pressure_kPa: -500, Boost_Pressure_kPa: -100, payload_t: 0,
+  speed_kmh: 0, total_resistance_pct: 0, ambient_C: -50 };
 
 function getHighLimitBreaches(reading) {
   return Object.entries(HIGH_LIMITS)
-    .filter(([key, limit]) => Number.isFinite(Number(reading[key])) && Number(reading[key]) > limit)
-    .map(([key, limit]) => ({ key, limit, value: Number(reading[key]) }));
+    .filter(([key, high]) => Number.isFinite(Number(reading[key]))
+      && (Number(reading[key]) > high || (LOW_LIMITS[key] !== undefined && Number(reading[key]) < LOW_LIMITS[key])))
+    .map(([key, limit]) => ({ key, limit, min: LOW_LIMITS[key], value: Number(reading[key]) }));
 }
 
 function createHighLimitAlert(engine, reading, io) {
@@ -53,7 +58,8 @@ function createHighLimitAlert(engine, reading, io) {
     return null;
   }
 
-  const details = breaches.map(({ key, limit, value }) => `${key} ${value} exceeds ${limit}`);
+  const details = breaches.map(({ key, limit, min, value }) =>
+    `${key} ${value} is outside ${min === undefined ? 'no lower bound' : min} to ${limit}`);
   const signature = breaches.map(({ key, value }) => `${key}:${value}`).join('|');
   if (state?.highLimitAlertSignature === signature) return state.highLimitAlert || null;
   if (state) state.highLimitAlertSignature = signature;
@@ -61,7 +67,7 @@ function createHighLimitAlert(engine, reading, io) {
     equipment_id: engine.id,
     severity: 'ANOMALY',
     anomaly_score: 1,
-    message: `High sensor limit exceeded: ${details.join('; ')}.`,
+    message: `Sensor safety bound exceeded: ${details.join('; ')}.`,
     feature_snapshot: Object.fromEntries(breaches.map(({ key, value }) => [key, value])),
     top_anomalous_features: details,
   });
@@ -105,44 +111,26 @@ function registerEngine(engine) {
 // No per-engine factor here anymore -- each engine's realism now comes from
   // which source rows belong to its source engine ID, not an invented scale.
 function mapReading(row) {
-  if (usesSourceLabels) {
-    return {
-      Temperature_C: Number(row.Temperature_C).toFixed(2),
-      RPM: Number(row.RPM).toFixed(1),
-      Fuel_Efficiency: Number(row.Fuel_Efficiency_km_per_L).toFixed(3),
-      Vibration_X: Number(row.Vibration_X).toFixed(3),
-      Vibration_Y: Number(row.Vibration_Y).toFixed(3),
-      Vibration_Z: Number(row.Vibration_Z).toFixed(3),
-      Torque_Nm: Number(row.Torque_Nm).toFixed(2),
-      Power_Output_kW: Number(row.Power_Output_kW).toFixed(2),
-      Fault_Condition: Number(row.is_anomaly) || 0,
-      Operational_Mode: row.haul_phase,
-      timestamp: new Date().toISOString(),
-      recorded_at: new Date().toISOString(),
-      source_engine_id: Number(row.engine_id), source_record: Number(row.record),
-      source_timestamp: row.timestamp, haul_phase: row.haul_phase,
-      payload_t: Number(row.payload_t), speed_kmh: Number(row.speed_kmh),
-      total_resistance_pct: Number(row.total_resistance_pct), ambient_C: Number(row.ambient_C),
-      Exhaust_Temp_C: Number(row.Exhaust_Temp_C), Fuel_Consumption_Lph: Number(row.Fuel_Consumption_Lph),
-      Fuel_Efficiency_km_per_L: Number(row.Fuel_Efficiency_km_per_L),
-      Oil_Pressure_kPa: Number(row.Oil_Pressure_kPa), Boost_Pressure_kPa: Number(row.Boost_Pressure_kPa),
-      is_anomaly: Number(row.is_anomaly) === 1, anomaly_type: row.anomaly_type,
-      anomaly_severity: Number(row.anomaly_severity), event_id: Number(row.event_id),
-      context_tag: row.context_tag, split: row.split,
-    };
-  }
   return {
-    Temperature_C:    parseFloat(row['Temperature (°C)']).toFixed(2),
-    RPM:              parseFloat(row['RPM']).toFixed(0),
-    Fuel_Efficiency:  parseFloat(row['Fuel_Efficiency']).toFixed(2),
-    Vibration_X:      parseFloat(row['Vibration_X']).toFixed(4),
-    Vibration_Y:      parseFloat(row['Vibration_Y']).toFixed(4),
-    Vibration_Z:      parseFloat(row['Vibration_Z']).toFixed(4),
-    Torque_Nm:        parseFloat(row['Torque']).toFixed(2),
-    Power_Output_kW:  parseFloat(row['Power_Output (kW)']).toFixed(2),
-    Fault_Condition:  parseInt(row['Fault_Condition']),
-    Operational_Mode: row['Operational_Mode'],
-    timestamp:        new Date().toISOString(),
+    Temperature_C: Number(row.Temperature_C).toFixed(2),
+    RPM: Number(row.RPM).toFixed(1),
+    Vibration_X: Number(row.Vibration_X).toFixed(3),
+    Vibration_Y: Number(row.Vibration_Y).toFixed(3),
+    Vibration_Z: Number(row.Vibration_Z).toFixed(3),
+    Torque_Nm: Number(row.Torque_Nm).toFixed(2),
+    Power_Output_kW: Number(row.Power_Output_kW).toFixed(2),
+    Operational_Mode: row.haul_phase,
+    timestamp: new Date().toISOString(), recorded_at: new Date().toISOString(),
+    source_engine_id: Number(row.engine_id), source_record: Number(row.record),
+    source_timestamp: row.timestamp, haul_phase: row.haul_phase,
+    payload_t: Number(row.payload_t), speed_kmh: Number(row.speed_kmh),
+    total_resistance_pct: Number(row.total_resistance_pct), ambient_C: Number(row.ambient_C),
+    Exhaust_Temp_C: Number(row.Exhaust_Temp_C), Fuel_Consumption_Lph: Number(row.Fuel_Consumption_Lph),
+    Fuel_Efficiency_km_per_L: Number(row.Fuel_Efficiency_km_per_L),
+    Oil_Pressure_kPa: Number(row.Oil_Pressure_kPa), Boost_Pressure_kPa: Number(row.Boost_Pressure_kPa),
+    is_anomaly: Number(row.is_anomaly) === 1, anomaly_type: row.anomaly_type,
+    anomaly_severity: Number(row.anomaly_severity), event_id: Number(row.event_id),
+    context_tag: row.context_tag, split: row.split,
   };
 }
 
@@ -152,20 +140,8 @@ function isSyntheticAnomalyDataset(rows) {
 }
 
 function prepareReplay(rows) {
-  usesSourceLabels = isSyntheticAnomalyDataset(rows);
-  if (!usesSourceLabels) {
-    const engineCount = Math.min(ENGINE_COUNT, rows.length);
-    const engines = Array.from({ length: engineCount }, (_, i) => ({
-      id: `ENGINE-${i + 1}`, name: `Engine ${i + 1}`, source_engine_id: null,
-    }));
-    engines.forEach(registerEngine);
-    const segLen = Math.floor(rows.length / engines.length);
-    engines.forEach((engine, i) => {
-      const start = i * segLen;
-      const end = i === engines.length - 1 ? rows.length : start + segLen;
-      engineState[engine.id].rows = rows.slice(start, end);
-    });
-    return engines;
+  if (!isSyntheticAnomalyDataset(rows)) {
+    throw new Error('Expected synthetic_anomaly_records.csv with engine_id, is_anomaly and event_id columns.');
   }
 
   const byId = new Map();
@@ -191,33 +167,6 @@ function prepareReplay(rows) {
   }
   console.log(`[Simulator] Registered ${selectedIds.length} independent source engines.`);
   return ENGINES;
-}
-
-function createSourceEventAlert(engine, reading, io) {
-  if (!reading.is_anomaly || reading.event_id < 0) return null;
-  const state = engineState[engine.id];
-  const eventKey = `${reading.event_id}:${reading.anomaly_type}`;
-  if (state.emittedEventIds.has(eventKey)) return null;
-  state.emittedEventIds.add(eventKey);
-  const label = reading.anomaly_type || 'labelled anomaly';
-  const alert = createAlert({
-    equipment_id: engine.id, severity: 'ANOMALY',
-    anomaly_score: Number(reading.anomaly_severity) || 1,
-    message: `Synthetic dataset event: ${label} (event ${reading.event_id}).`,
-    feature_snapshot: {
-      source_engine_id: reading.source_engine_id, source_record: reading.source_record,
-      source_timestamp: reading.source_timestamp, anomaly_type: label,
-      anomaly_severity: reading.anomaly_severity,
-    },
-    top_anomalous_features: [label, `severity ${reading.anomaly_severity}`],
-  });
-  fleetStatus[engine.id] = {
-    ...fleetStatus[engine.id], severity: 'ANOMALY',
-    anomaly_score: Number(reading.anomaly_severity) || 1,
-    message: alert.message, last_reading: reading, reading_count: state.readingCount,
-  };
-  io.emit('new_alert', alert);
-  return alert;
 }
 
 // ── Call Flask predictor ──────────────────────────────────────────────────────
@@ -251,6 +200,7 @@ function startSimulator({ io, flaskUrl, dataPath }) {
     .on('data', row => {
       if (Object.hasOwn(row, 'engine_id') && Object.hasOwn(row, 'is_anomaly')) {
         syntheticRows = true;
+        if (row.split && String(row.split).toLowerCase() !== SIMULATOR_SPLIT) return;
         const sourceId = String(row.engine_id || '').trim();
         if (!sourceId) return;
         if (!selectedSourceIds.has(sourceId) && selectedSourceIds.size >= ENGINE_COUNT) return;
@@ -259,8 +209,13 @@ function startSimulator({ io, flaskUrl, dataPath }) {
       allRows.push(row);
     })
     .on('end', () => {
-      console.log(`[Simulator] Loaded ${allRows.length} replay rows${syntheticRows ? ` for ${selectedSourceIds.size} source engines (cap ${ENGINE_COUNT})` : ''}.`);
-      replayRows(allRows, io, flaskUrl);
+      if (!syntheticRows) {
+        console.error('[Simulator] Refusing to replay a dataset without engine IDs and anomaly labels. Configure synthetic_anomaly_records.csv.');
+        return;
+      }
+      console.log(`[Simulator] Loaded ${allRows.length} replay rows for ${selectedSourceIds.size} ${SIMULATOR_SPLIT} source engines (cap ${ENGINE_COUNT}).`);
+      try { replayRows(allRows, io, flaskUrl); }
+      catch (err) { console.error(`[Simulator] Could not prepare synthetic replay: ${err.message}`); }
     })
     .on('error', err => console.error(`[Simulator] Could not read ${dataPath}: ${err.message}`));
 }
@@ -311,18 +266,9 @@ function replayRows(rows, io, flaskUrl) {
         buffer_size:  state.buffer.length,
       });
 
-      if (usesSourceLabels) createSourceEventAlert(engine, reading, io);
-      else createHighLimitAlert(engine, reading, io);
-      if (usesSourceLabels && !reading.is_anomaly) {
-        fleetStatus[engine.id] = {
-          ...fleetStatus[engine.id],
-          severity: 'NORMAL', anomaly_score: 0,
-          message: 'No labelled anomaly in the current source reading.',
-          last_reading: reading, reading_count: state.readingCount,
-        };
-      }
+      createHighLimitAlert(engine, reading, io);
 
-      if (!usesSourceLabels && state.buffer.length >= WINDOW_SIZE) {
+      if (state.buffer.length >= WINDOW_SIZE) {
         const result = await callPredictor(engine.id, state.buffer, flaskUrl);
 
         if (result) {
@@ -331,7 +277,7 @@ function replayRows(rows, io, flaskUrl) {
           const highBreaches = getHighLimitBreaches(reading);
           const effectiveSeverity = highBreaches.length ? 'ANOMALY' : result.severity;
           const effectiveMessage = highBreaches.length
-            ? `High sensor limit exceeded: ${highBreaches.map(({ key, limit, value }) => `${key} ${value} exceeds ${limit}`).join('; ')}.`
+            ? `Sensor safety bound exceeded: ${highBreaches.map(({ key, limit, min, value }) => `${key} ${value} is outside ${min === undefined ? 'no lower bound' : min} to ${limit}`).join('; ')}.`
             : result.message;
 
           if (database.isDatabaseEnabled()) {
@@ -373,6 +319,9 @@ function replayRows(rows, io, flaskUrl) {
             anomaly_score:    highBreaches.length ? 1 : result.anomaly_score,
             message:          effectiveMessage,
             reading_count:    state.readingCount,
+            ground_truth_anomaly: reading.is_anomaly,
+            source_event_type: reading.anomaly_type,
+            source_split: reading.split,
           });
 
           console.log(`[${engine.id}] ${result.severity} | `
@@ -402,28 +351,35 @@ function getTruckStatus(id) { return fleetStatus[id] || null; }
 // through the normal, unmodified alert pipeline -- nothing about
 // createAlert() or the Socket.io emit path changes.
 //
-// SENSOR_STATS below are the REAL mean/std/min/max measured directly from
-// the raw ziya07 CSV (data/raw/engine_failure_dataset.csv, 1000 rows) --
-// not guessed. They exist so the frontend can show honest "typical range"
-// guidance next to each input and offer preset buttons that pre-fill
-// real, computed anomalous values (mean ± Nσ) which the user can then
-// see and edit before injecting -- the number injected is always visible,
-// never hidden behind a slider.
+// These are descriptive statistics computed from normal-labelled training
+// rows in synthetic_anomaly_records.csv. They guide manual injection only;
+// the Isolation Forest makes the actual model decision.
 const SENSOR_STATS = {
-  Temperature_C:   { label: 'Temperature',     unit: '°C',  mean: 90.50, std: 17.26, min: 60.01,  max: 119.98 },
-  RPM:             { label: 'RPM',              unit: 'rpm', mean: 2512.32, std: 867.54, min: 1000.74, max: 3996.04 },
-  Vibration_X:     { label: 'Vibration X',      unit: '',    mean: 0.50, std: 0.30, min: 0.00, max: 1.00 },
-  Vibration_Y:     { label: 'Vibration Y',      unit: '',    mean: 0.50, std: 0.28, min: 0.00, max: 1.00 },
-  Vibration_Z:     { label: 'Vibration Z',      unit: '',    mean: 0.48, std: 0.29, min: 0.00, max: 1.00 },
-  Torque_Nm:       { label: 'Torque',           unit: 'Nm',  mean: 123.57, std: 42.90, min: 50.06,  max: 199.91 },
-  Fuel_Efficiency: { label: 'Fuel Efficiency',  unit: 'k/L', mean: 22.49, std: 4.42, min: 15.05,  max: 29.99 },
-  Power_Output_kW: { label: 'Power Output',     unit: 'kW',  mean: 58.88, std: 22.54, min: 20.15,  max: 99.93 },
+  payload_t: { label: 'Payload', unit: 't', mean: 61.058, std: 97.947, min: 0, max: 270 },
+  speed_kmh: { label: 'Speed', unit: 'km/h', mean: 13.838, std: 14.411, min: 0, max: 42.75 },
+  total_resistance_pct: { label: 'Resistance', unit: '%', mean: 5.335, std: 3.625, min: 2, max: 21.14 },
+  ambient_C: { label: 'Ambient temperature', unit: '°C', mean: 24.162, std: 5.071, min: 15.4, max: 38.3 },
+  Temperature_C: { label: 'Engine temperature', unit: '°C', mean: 93.919, std: 3.32, min: 17.8, max: 178.6 },
+  Exhaust_Temp_C: { label: 'Exhaust temperature', unit: '°C', mean: 480.423, std: 29.405, min: 397.1, max: 632.5 },
+  RPM: { label: 'Engine RPM', unit: 'rpm', mean: 1256.085, std: 396.231, min: 690.1, max: 1779.5 },
+  Torque_Nm: { label: 'Torque', unit: 'Nm', mean: 3685.603, std: 2544.899, min: 1327.7, max: 8422.8 },
+  Power_Output_kW: { label: 'Power output', unit: 'kW', mean: 566.74, std: 529.884, min: 88.7, max: 1541.9 },
+  Fuel_Consumption_Lph: { label: 'Fuel consumption', unit: 'L/h', mean: 60.562, std: 61.565, min: 13.1, max: 205.7 },
+  Fuel_Efficiency_km_per_L: { label: 'Fuel efficiency', unit: 'km/L', mean: 0.405, std: 0.557, min: 0, max: 1.868 },
+  Oil_Pressure_kPa: { label: 'Oil pressure', unit: 'kPa', mean: 432.002, std: 15.536, min: 278.1, max: 473 },
+  Boost_Pressure_kPa: { label: 'Boost pressure', unit: 'kPa', mean: 106.074, std: 73.753, min: -4.9, max: 231.9 },
+  Vibration_X: { label: 'Vibration X', unit: '', mean: 1.047, std: 0.214, min: 0.604, max: 2.185 },
+  Vibration_Y: { label: 'Vibration Y', unit: '', mean: 0.89, std: 0.182, min: 0.499, max: 1.891 },
+  Vibration_Z: { label: 'Vibration Z', unit: '', mean: 1.204, std: 0.246, min: 0.681, max: 2.527 },
 };
 
 // Decimal places to match mapReading()'s own formatting per field.
 const SENSOR_DECIMALS = {
-  Temperature_C: 2, RPM: 0, Vibration_X: 4, Vibration_Y: 4, Vibration_Z: 4,
-  Torque_Nm: 2, Fuel_Efficiency: 2, Power_Output_kW: 2,
+  payload_t: 1, speed_kmh: 1, total_resistance_pct: 2, ambient_C: 1,
+  Temperature_C: 2, Exhaust_Temp_C: 1, RPM: 1, Torque_Nm: 1,
+  Power_Output_kW: 1, Fuel_Consumption_Lph: 1, Fuel_Efficiency_km_per_L: 3,
+  Oil_Pressure_kPa: 1, Boost_Pressure_kPa: 1,
+  Vibration_X: 3, Vibration_Y: 3, Vibration_Z: 3,
 };
 
 function getSensorInfo() {

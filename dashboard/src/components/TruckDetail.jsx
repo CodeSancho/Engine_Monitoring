@@ -6,12 +6,12 @@ import { SEV_COLOR, getSeverityColor } from '../constants/Severity';
 import { downloadCsv } from '../utils/csvExport';
 
 const SENSOR_KEYS = [
-  { key: 'Temperature_C',   label: 'Temperature',    unit: '°C',   color: '#bf7d68', warn: 120 },
-  { key: 'RPM',             label: 'Engine RPM',     unit: 'rpm',  color: '#5f84a3', warn: 4000 },
-  { key: 'Fuel_Efficiency', label: 'Fuel Efficiency', unit: 'k/L', color: '#74a382', warn: 30 },
-  { key: 'Power_Output_kW', label: 'Power Output',   unit: 'kW',   color: '#8f7fa8', warn: 100 },
-  { key: 'Vibration_X',     label: 'Vibration X',    unit: '',     color: '#b87333', warn: 1 },
-  { key: 'Vibration_Y',     label: 'Vibration Y',    unit: '',     color: '#b99b52', warn: 1 },
+  { key: 'Temperature_C',   label: 'Engine temperature', unit: '°C', color: '#bf7d68', warn: 250 },
+  { key: 'Exhaust_Temp_C',  label: 'Exhaust temperature', unit: '°C', color: '#ce805a', warn: 1000 },
+  { key: 'RPM',             label: 'Engine RPM', unit: 'rpm', color: '#5f84a3', warn: 3000 },
+  { key: 'Fuel_Efficiency_km_per_L', label: 'Fuel efficiency', unit: 'km/L', color: '#74a382', warn: 10 },
+  { key: 'Oil_Pressure_kPa', label: 'Oil pressure', unit: 'kPa', color: '#8f7fa8', warn: 2000 },
+  { key: 'Vibration_X',     label: 'Vibration X', unit: '', color: '#b87333', warn: 10 },
 ];
 
 function SensorChart({ data, sensor }) {

@@ -1,1 +1,6 @@
 saved_models/component_rul/
+
+.env
+.env.*
+!.env.example
+backend/.env

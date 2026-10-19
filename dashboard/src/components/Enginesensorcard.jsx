@@ -11,7 +11,7 @@ const CALLOUTS = [
   { key: 'temperature_mean',     label: 'Temperature', unit: '°C',  decimals: 1, side: 'left',  anchor: [48, 22], labelY: 18 },
   { key: 'rpm_mean',             label: 'Engine RPM',  unit: 'rpm', decimals: 0, side: 'left',  anchor: [28, 62], labelY: 68 },
   { key: 'vibration_magnitude',  label: 'Vibration',   unit: '',    decimals: 3, side: 'right', anchor: [55, 55], labelY: 30 },
-  { key: 'fuel_efficiency_mean', label: 'Fuel Eff.',   unit: 'k/L', decimals: 1, side: 'right', anchor: [70, 35], labelY: 75 },
+  { key: 'fuel_efficiency_km_per_l_mean', label: 'Fuel Eff.',   unit: 'km/L', decimals: 2, side: 'right', anchor: [70, 35], labelY: 75 },
 ];
 
 function fmtVal(v, unit, decimals) {

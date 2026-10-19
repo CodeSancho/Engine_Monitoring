@@ -182,13 +182,13 @@ export default function ComponentRulDashboard() {
                       <strong>{formatMonths(values.months)}</strong>
                       <span>{values.range_low.toFixed(1)}–{values.range_high.toFixed(1)} mo tree spread</span>
                     </div>
-                    <div className="component-rul-bar"><i style={{ width: `${Math.max(2, Math.min(100, values.months / 24 * 100))}%`, background: part.color }} /></div>
+                    <div className="component-rul-bar"><i style={{ width: `${Math.max(2, Math.min(100, values.months / assessment.model_info.rul_max_months * 100))}%`, background: part.color }} /></div>
                     <small>Most-used model signals: {topSignals.join(', ')}</small>
                     {part.routine && <small className="component-rul-routine-note">Routine replacement item; excluded from likely major-part cause.</small>}
                   </button>
                 );
               })}
-              <div className="component-rul-footnote">Predictions are capped at 24 months. Range is the 10th–90th percentile across forest trees; it shows tree disagreement, not a formal confidence interval.</div>
+              <div className="component-rul-footnote">RUL is shown across the full training-label range (up to {assessment.model_info.rul_max_months.toFixed(0)} months; no 24-month cap). Range is the 10th–90th percentile across trees, showing model disagreement rather than a formal confidence interval.</div>
             </div>
 
             <aside className="component-rul-side">
@@ -202,7 +202,7 @@ export default function ComponentRulDashboard() {
               </div>
               <div className="component-rul-model-note">
                 <h3>Assessment basis</h3>
-                <p>Each forest uses six consecutive records with mean, spread, trend, and latest value for 15 sensor and operating signals.</p>
+                <p>Each forest uses six consecutive records with mean, spread, trend, and latest sensor values, plus engine operating hours and month on the engine timeline.</p>
                 <p>{assessment.model_info.validation_engines} validation engines and {assessment.model_info.test_engines} test engines are held out by engine ID.</p>
                 <p>Source: {assessment.model_info.dataset}. Synthetic benchmark only; not a verified forecast for a real haul truck.</p>
               </div>
@@ -219,7 +219,7 @@ export default function ComponentRulDashboard() {
               <LineChart data={chartData} margin={{ top: 12, right: 16, bottom: 18, left: 8 }}>
                 <CartesianGrid stroke="#e7edf3" vertical={false} />
                 <XAxis dataKey="month" type="number" domain={[0, 'dataMax']} tick={{ fill: '#5B6B82', fontSize: 11 }} tickFormatter={value => formatMonths(value)} label={{ value: 'Operating history (months)', position: 'insideBottom', offset: -8, fill: '#45546a', fontSize: 12 }} />
-                <YAxis domain={[0, 24]} tick={{ fill: '#5B6B82', fontSize: 11 }} tickFormatter={value => `${value} mo`} label={{ value: 'Predicted life remaining', angle: -90, position: 'insideLeft', fill: '#45546a', fontSize: 12 }} />
+                <YAxis domain={[0, assessment.model_info.rul_max_months]} tick={{ fill: '#5B6B82', fontSize: 11 }} tickFormatter={value => `${value} mo`} label={{ value: 'Predicted life remaining', angle: -90, position: 'insideLeft', fill: '#45546a', fontSize: 12 }} />
                 <Tooltip content={<RulTooltip selectedPart={selectedPart} />} />
                 <ReferenceLine y={3} stroke="#b5483a" strokeDasharray="5 4" label={{ value: '3 mo · critical', position: 'insideTopRight', fill: '#984940', fontSize: 10 }} />
                 <ReferenceLine y={6} stroke="#d18a2f" strokeDasharray="5 4" label={{ value: '6 mo · watch', position: 'insideTopRight', fill: '#9b681e', fontSize: 10 }} />

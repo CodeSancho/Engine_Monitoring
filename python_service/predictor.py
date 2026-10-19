@@ -4,22 +4,8 @@ predictor.py  —  Flask ML Microservice  (port 5001)
 Wraps both trained models behind a single /predict endpoint.
 Node.js backend calls this internally — never exposed to the internet.
 
-FIXES APPLIED (see conversation):
-  1. Torque_Nm restored to ZIYA_SENSOR_BASE (was silently missing,
-     causing the exact 45-vs-51 feature crash).
-  2. _get_ziya_feature_vector now uses ZIYA_FEAT_COLS (loaded from
-     ziya07_feature_cols.json, the file training actually produces)
-     as the single source of truth for column order, instead of a
-     second, independently-hardcoded list that can drift out of sync.
-     A startup assertion now checks the two never silently diverge again.
-  3. FLAGGED, NOT YET FIXED: the CMAPSS RUL section maps ziya07 sensor
-     readings onto CMAPSS sensor slots (s2, s3, s4...) with fabricated
-     defaults. This is the exact sensor-mimicry approach rejected earlier
-     in this project (CMAPSS measures turbofan gas-path thermodynamics;
-     ziya07 measures truck vibration/torque -- they are not interchangeable).
-     Every RUL prediction currently served to real ziya07-shaped input is
-     built on physically meaningless mapped values. See conversation for
-     recommended next step before this goes live.
+Live anomaly scoring uses the trained synthetic-anomaly artifact bundle.
+The legacy CMAPSS RUL demonstration remains separate from live truck telemetry.
 """
 
 import os, json, logging, time
@@ -45,37 +31,28 @@ MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
 log.info("Loading models...")
 IF_MODEL     = joblib.load(f'{MODELS_DIR}/isolation_forest.pkl')
 RUL_MODEL    = joblib.load(f'{MODELS_DIR}/rul_regressor.pkl')
-ZIYA_SCALER  = joblib.load(f'{MODELS_DIR}/ziya07_scaler.pkl')
+ANOMALY_SCALER = joblib.load(f'{MODELS_DIR}/synthetic_anomaly_scaler.pkl')
 CMAPSS_SCALER= joblib.load(f'{MODELS_DIR}/cmapss_scaler.pkl')
 log.info("Models loaded [OK]")
 
-# Load exact feature columns used during training -- this is now the ONLY
-# source of truth for column order. No second hardcoded list exists anymore.
-with open(f'{MODELS_DIR}/ziya07_feature_cols.json') as _f:
-    ZIYA_FEAT_COLS  = json.load(_f)
+# Feature schema and calibration are generated alongside the trained model.
+with open(f'{MODELS_DIR}/synthetic_anomaly_model_metadata.json') as _f:
+    IF_METADATA = json.load(_f)
+with open(f'{MODELS_DIR}/synthetic_anomaly_feature_cols.json') as _f:
+    ANOMALY_FEAT_COLS = json.load(_f)
 with open(f'{MODELS_DIR}/cmapss_feature_cols.json') as _f:
     CMAPSS_FEAT_COLS = json.load(_f)
 
-# FIX: Torque_Nm restored. Still used by _extract_window_features to know
-# which raw sensor keys to look for in incoming request readings.
-ZIYA_SENSOR_BASE = ['Temperature_C','RPM','Fuel_Efficiency',
-                     'Vibration_X','Vibration_Y','Vibration_Z',
-                     'Torque_Nm','Power_Output_kW']
+ANOMALY_SENSOR_BASE = IF_METADATA['sensor_columns']
+ANOMALY_WINDOW_SIZE = int(IF_METADATA['window_size_readings'])
 CMAPSS_SENSOR_BASE = ['s2','s3','s4','s7','s8','s9',
                        's11','s12','s13','s14','s15','s17','s20','s21']
-
-# GUARDRAIL: fail loudly and immediately at startup, not at request time,
-# if the model expects a feature count this code cannot produce. This is
-# exactly the check that would have caught the 45-vs-51 mismatch before
-# a single /predict request ever failed in production.
-_expected_ziya_count = len(ZIYA_SENSOR_BASE) * 6 + 3
-assert len(ZIYA_FEAT_COLS) == _expected_ziya_count, (
-    f"ZIYA_FEAT_COLS has {len(ZIYA_FEAT_COLS)} entries but ZIYA_SENSOR_BASE "
-    f"({len(ZIYA_SENSOR_BASE)} sensors) would produce {_expected_ziya_count}. "
-    f"The saved model and this code's sensor list have drifted apart -- "
-    f"check ziya07_feature_cols.json against ZIYA_SENSOR_BASE before starting."
+assert len(ANOMALY_FEAT_COLS) == int(IF_METADATA['feature_count']), (
+    'Synthetic anomaly metadata and feature-column artifact disagree.'
 )
-log.info(f"Feature column check passed: {len(ZIYA_FEAT_COLS)} ziya07 features, "
+assert ANOMALY_SCALER.n_features_in_ == len(ANOMALY_FEAT_COLS)
+assert len(ANOMALY_SENSOR_BASE) == len(set(ANOMALY_SENSOR_BASE))
+log.info(f"Feature column check passed: {len(ANOMALY_FEAT_COLS)} synthetic-data features, "
          f"{len(CMAPSS_FEAT_COLS)} CMAPSS features")
 
 # Load results JSON for metadata
@@ -128,14 +105,9 @@ def _extract_window_features(readings, sensor_cols):
     return feats
 
 
-def _get_ziya_feature_vector(feats):
-    """
-    Build ordered feature array matching training column order.
-    FIX: uses ZIYA_FEAT_COLS (the JSON training actually produces) as the
-    single source of truth, instead of a second hardcoded column list
-    that previously drifted out of sync (missing Torque_Nm -> 45 vs 51).
-    """
-    return np.array([feats.get(c, 0.0) for c in ZIYA_FEAT_COLS]).reshape(1, -1), ZIYA_FEAT_COLS
+def _get_anomaly_feature_vector(feats):
+    values = [feats.get(column, 0.0) for column in ANOMALY_FEAT_COLS]
+    return np.asarray(values, dtype=float).reshape(1, -1), ANOMALY_FEAT_COLS
 
 
 def _get_cmapss_feature_vector(feats):
@@ -174,8 +146,17 @@ def model_info():
     return jsonify({
         'isolation_forest': {
             'dataset': IF_RESULTS.get('dataset'),
-            'f1_score': IF_RESULTS.get('test_f1', IF_RESULTS.get('f1_score')),
+            'model_version': IF_RESULTS.get('model_version'),
+            'feature_count': IF_RESULTS.get('feature_count'),
+            'window_size_readings': IF_RESULTS.get('window_size_readings'),
+            'test_precision': IF_RESULTS.get('test_precision'),
+            'test_recall': IF_RESULTS.get('test_recall'),
+            'test_f1': IF_RESULTS.get('test_f1'),
+            'test_false_alarm_rate': IF_RESULTS.get('test_false_alarm_rate'),
+            'validation_false_alarm_rate': IF_RESULTS.get('validation_false_alarm_rate'),
             'contamination': IF_RESULTS.get('contamination'),
+            'threshold_policy': IF_RESULTS.get('threshold_policy'),
+            'test_engine_count': IF_RESULTS.get('test_engine_count'),
         },
         'rul_regressor': {
             'dataset': RUL_RESULTS.get('dataset'),
@@ -196,17 +177,16 @@ def predict():
         equipment_id = body.get('equipment_id', 'UNKNOWN')
         readings     = body.get('readings', [])
 
-        if len(readings) < 5:
-            return jsonify({'error': f'Need at least 5 readings, got {len(readings)}'}), 400
+        if len(readings) < ANOMALY_WINDOW_SIZE:
+            return jsonify({'error': f'Need at least {ANOMALY_WINDOW_SIZE} readings, got {len(readings)}'}), 400
 
-        feats = _extract_window_features(readings, ZIYA_SENSOR_BASE)
-
-        # ── Anomaly detection ──────────────────────────────────────────────
-        X_ziya, ziya_cols = _get_ziya_feature_vector(feats)
-        X_ziya_scaled     = ZIYA_SCALER.transform(X_ziya)
-        raw_score     = float(-IF_MODEL.score_samples(X_ziya_scaled)[0])
-        anomaly_score = float(np.clip((raw_score - 0.3) / 0.4, 0.0, 1.0))
-        is_anomalous  = IF_MODEL.predict(X_ziya_scaled)[0] == -1
+        feats = _extract_window_features(readings[-ANOMALY_WINDOW_SIZE:], ANOMALY_SENSOR_BASE)
+        X_anomaly, _ = _get_anomaly_feature_vector(feats)
+        X_scaled = ANOMALY_SCALER.transform(X_anomaly)
+        raw_score = float(IF_MODEL.score_samples(X_scaled)[0])  # lower values are more anomalous
+        score_scale = max(float(IF_METADATA.get('score_scale', 0.1)), 1e-9)
+        anomaly_score = float(np.clip(0.5 + (float(IF_MODEL.offset_) - raw_score) / (4 * score_scale), 0, 1))
+        is_anomalous = IF_MODEL.predict(X_scaled)[0] == -1
 
         severity = 'ANOMALY' if is_anomalous else 'NORMAL'
         message = ('Anomaly detected in truck engine telemetry.' if is_anomalous
@@ -226,11 +206,15 @@ def predict():
             'message':               message,
             'top_anomalous_features': top_features,
             'processing_time_ms':    processing_ms,
+            'model_version': IF_METADATA['model_version'],
+            'score_threshold': 0.5,
             'feature_snapshot': {
                 'temperature_mean':    round(feats.get('Temperature_C_mean', 0), 2),
                 'rpm_mean':            round(feats.get('RPM_mean', 0), 2),
                 'vibration_magnitude': round(feats.get('vibration_magnitude', 0), 4),
-                'fuel_efficiency_mean':round(feats.get('Fuel_Efficiency_mean', 0), 2),
+                'fuel_efficiency_km_per_l_mean': round(feats.get('Fuel_Efficiency_km_per_L_mean', 0), 3),
+                'exhaust_temperature_mean': round(feats.get('Exhaust_Temp_C_mean', 0), 2),
+                'oil_pressure_mean': round(feats.get('Oil_Pressure_kPa_mean', 0), 2),
                 'temperature_slope':   round(feats.get('Temperature_C_slope', 0), 6),
             },
             'note': ('RUL prediction removed from this endpoint -- the RUL model was trained '

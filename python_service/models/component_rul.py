@@ -24,7 +24,6 @@ MODEL_DIR = os.environ.get(
     os.path.join(BASE_DIR, "saved_models", "component_rul"),
 )
 WINDOW = 6
-RUL_CAP_MONTHS = 24
 COMPONENTS = {
     "main_bearings": "RUL_months_main_bearings",
     "fuel_injectors": "RUL_months_fuel_injectors",
@@ -40,7 +39,8 @@ SIGNALS = [
     "Boost_Pressure_kPa", "Vibration_X", "Vibration_Y", "Vibration_Z",
 ]
 FEATURE_NAMES = [f"{signal}_{stat}" for stat in ("mean", "std", "slope", "latest") for signal in SIGNALS]
-MODEL_VERSION = "synthetic-component-rul-v2"
+FEATURE_NAMES += ["operating_hours", "month_index"]
+MODEL_VERSION = "synthetic-component-rul-v3"
 _MODELS = None
 _MODEL_INFO = None
 _LOCK = threading.Lock()
@@ -73,15 +73,16 @@ def _prepare_data():
         if len(group) < WINDOW:
             continue
         values = group[SIGNALS].to_numpy(dtype=np.float32)
-        features = _window_features(values)
         end_rows = group.iloc[WINDOW - 1:]
-        matrices.append(features)
+        sensor_features = _window_features(values)
+        time_features = end_rows[["operating_hours", "month_index"]].to_numpy(dtype=np.float32)
+        matrices.append(np.concatenate((sensor_features, time_features), axis=1))
         for component, target in COMPONENTS.items():
             labels[component].append(end_rows[target].to_numpy(dtype=np.float32))
         metadata.append(end_rows[["engine_id", "record", "operating_hours", "month_index", "split"]].copy())
 
     X = np.concatenate(matrices, axis=0)
-    y = {name: np.minimum(RUL_CAP_MONTHS, np.concatenate(parts, axis=0)) for name, parts in labels.items()}
+    y = {name: np.concatenate(parts, axis=0) for name, parts in labels.items()}
     meta = pd.concat(metadata, ignore_index=True)
     return X, y, meta
 
@@ -97,20 +98,22 @@ def _fit_models():
     models = {}
     metrics = {}
     feature_importance = {}
+    rul_max_months = max(float(np.max(y[name][train])) for name in COMPONENTS)
     for index, component in enumerate(COMPONENTS):
         model = RandomForestRegressor(
-            n_estimators=64,
+            n_estimators=96,
             max_depth=18,
-            min_samples_leaf=12,
+            min_samples_leaf=8,
             max_features=0.8,
             n_jobs=-1,
             random_state=410 + index,
         )
         model.fit(X[train], y[component][train])
+        validation_prediction = model.predict(X[validation])
         models[component] = model
         metrics[component] = {}
         for split_name, mask in (("validation", validation), ("test", test)):
-            predicted = model.predict(X[mask])
+            predicted = validation_prediction if split_name == "validation" else model.predict(X[mask])
             metrics[component][split_name] = {
                 "mae_months": round(float(mean_absolute_error(y[component][mask], predicted)), 3),
                 "rmse_months": round(float(np.sqrt(mean_squared_error(y[component][mask], predicted))), 3),
@@ -126,11 +129,20 @@ def _fit_models():
         "dataset": os.path.basename(DATA_PATH),
         "engines": int(meta["engine_id"].nunique()),
         "window_records": WINDOW,
-        "rul_cap_months": RUL_CAP_MONTHS,
+        "rul_cap_months": None,
+        "rul_max_months": round(rul_max_months, 2),
         "training_rows": int(train.sum()),
+        "feature_count": int(X.shape[1]),
         "validation_engines": int(meta.loc[validation, "engine_id"].nunique()),
         "test_engines": int(meta.loc[test, "engine_id"].nunique()),
         "metrics": metrics,
+        "model_parameters": {
+            "estimator": "RandomForestRegressor",
+            "trees": 96,
+            "max_depth": 18,
+            "min_samples_leaf": 8,
+            "max_features": 0.8,
+        },
         "feature_importance": feature_importance,
     }
     return models, info
@@ -167,7 +179,9 @@ def predict_trajectory(records, step=8):
         raise ValueError(f"Trajectory is missing sensor fields: {', '.join(missing)}")
     frame = pd.DataFrame(records)
     values = frame[SIGNALS].to_numpy(dtype=np.float32)
-    features = _window_features(values)
+    sensor_features = _window_features(values)
+    time_features = frame.iloc[WINDOW - 1:][["operating_hours", "month_index"]].to_numpy(dtype=np.float32)
+    features = np.concatenate((sensor_features, time_features), axis=1)
     indexes = list(range(0, len(features), max(1, int(step))))
     if indexes[-1] != len(features) - 1:
         indexes.append(len(features) - 1)
@@ -178,9 +192,9 @@ def predict_trajectory(records, step=8):
         selected = features[indexes]
         tree_predictions = np.vstack([tree.predict(selected) for tree in model.estimators_])
         predictions[component] = {
-            "mean": np.clip(tree_predictions.mean(axis=0), 0, RUL_CAP_MONTHS),
-            "low": np.clip(np.quantile(tree_predictions, 0.10, axis=0), 0, RUL_CAP_MONTHS),
-            "high": np.clip(np.quantile(tree_predictions, 0.90, axis=0), 0, RUL_CAP_MONTHS),
+            "mean": np.clip(tree_predictions.mean(axis=0), 0, info["rul_max_months"]),
+            "low": np.clip(np.quantile(tree_predictions, 0.10, axis=0), 0, info["rul_max_months"]),
+            "high": np.clip(np.quantile(tree_predictions, 0.90, axis=0), 0, info["rul_max_months"]),
         }
 
     points = []

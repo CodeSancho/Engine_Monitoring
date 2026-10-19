@@ -75,7 +75,7 @@ async function saveReading(equipmentId, name, reading, sourceDeviceId = null) {
   ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)`, [
     equipmentId, reading.recorded_at || reading.timestamp || new Date().toISOString(),
     numberOrNull(reading.Temperature_C), numberOrNull(reading.RPM),
-    numberOrNull(reading.Fuel_Efficiency), numberOrNull(reading.Vibration_X),
+    numberOrNull(reading.Fuel_Efficiency_km_per_L ?? reading.Fuel_Efficiency), numberOrNull(reading.Vibration_X),
     numberOrNull(reading.Vibration_Y), numberOrNull(reading.Vibration_Z),
     numberOrNull(reading.Torque_Nm), numberOrNull(reading.Power_Output_kW),
     numberOrNull(reading.Fault_Condition), reading.Operational_Mode || null,

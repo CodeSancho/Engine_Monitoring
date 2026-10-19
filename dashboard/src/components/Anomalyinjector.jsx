@@ -16,7 +16,7 @@ import engineCardImg from '../assets/engine-card.webp';
 // numbers are computed from real sensor-info once it loads, not hardcoded.
 const PRESETS = [
   { key: 'bearing_wear',    label: 'Bearing wear',    sensors: [{ key: 'Vibration_X', dir: 1 }, { key: 'Vibration_Y', dir: 1 }, { key: 'Vibration_Z', dir: 1 }] },
-  { key: 'overheat',        label: 'Overheat',        sensors: [{ key: 'Temperature_C', dir: 1 }, { key: 'Fuel_Efficiency', dir: -1 }] },
+  { key: 'overheat',        label: 'Overheat',        sensors: [{ key: 'Temperature_C', dir: 1 }, { key: 'Fuel_Efficiency_km_per_L', dir: -1 }] },
   { key: 'mechanical_bind', label: 'Mechanical bind', sensors: [{ key: 'Torque_Nm', dir: 1 }, { key: 'RPM', dir: -1 }] },
 ];
 const PRESET_SIGMA = 4; // how many std devs a preset reaches for -- only used to pre-fill, always shown/editable after

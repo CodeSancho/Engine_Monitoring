@@ -22,14 +22,19 @@ export default function ModelInfo() {
           <div className="model-card__header" style={{ borderColor: '#2E86AB' }}>
             <div className="model-card__title">Isolation Forest</div>
             <div className="model-card__sub">Anomaly detection</div>
-            <div className="model-card__dataset">ziya07 Engine Failure Dataset</div>
+            <div className="model-card__dataset">{model.dataset || 'Synthetic engine telemetry'}</div>
           </div>
           <div className="model-card__body">
-            <MetricRow label="F1 score" value={fmt(model.f1_score)} />
-            <MetricRow label="Contamination" value={fmt(model.contamination)} />
+            <MetricRow label="Test precision" value={fmt(model.test_precision)} />
+            <MetricRow label="Test recall" value={fmt(model.test_recall)} />
+            <MetricRow label="Held-out test F1" value={fmt(model.test_f1)} />
+            <MetricRow label="Test false-alarm rate" value={fmt(model.test_false_alarm_rate)} />
+            <MetricRow label="Held-out test engines" value={model.test_engine_count ?? '—'} />
+            <MetricRow label="Window length" value={model.window_size_readings ? `${model.window_size_readings} readings` : '—'} />
+            <MetricRow label="Features per window" value={model.feature_count ?? '—'} />
           </div>
           <div className="model-card__note">
-            This model detects unusual sensor windows. It is independent from the five component-level RUL forests.
+            Fit on all training windows without labels, as an unsupervised detector. Validation labels are used only to choose the alert threshold; the held-out test engines report performance. Synthetic labels do not trigger live alerts.
           </div>
         </div>
         <div className="model-card">
